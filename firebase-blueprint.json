@@ -1,0 +1,149 @@
+{
+  "entities": {
+    "userProfile": {
+      "title": "User Profile",
+      "description": "User profile data and preferences",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "dailyTargetPages": { "type": "number" },
+        "singleVolumeTargetPages": { "type": "number" },
+        "multiVolumeTargetPages": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "userBook": {
+      "title": "User Book",
+      "description": "Personal library book instance",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "category": { "type": "string" },
+        "subCategory": { "type": "string" },
+        "publisher": { "type": "string" },
+        "publishYear": { "type": "string" },
+        "isbn": { "type": "string" },
+        "totalPages": { "type": "number" },
+        "currentPage": { "type": "number" },
+        "volumeInfo": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["reading", "completed", "paused", "want_to_read"] },
+        "isMultiVolume": { "type": "boolean" },
+        "seriesTitle": { "type": "string" },
+        "volumeNumber": { "type": "number" },
+        "totalVolumes": { "type": "number" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "userRating": { "type": "number" },
+        "userNotes": { "type": "string" },
+        "fileStorageUrl": { "type": "string" },
+        "fileType": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "title", "author", "category", "totalPages", "status"]
+    },
+    "readingSession": {
+      "title": "Reading Session Log",
+      "description": "Daily reading session history record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bookId": { "type": "string" },
+        "bookTitle": { "type": "string" },
+        "date": { "type": "string" },
+        "pagesRead": { "type": "number" },
+        "isMultiVolume": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "bookId", "date", "pagesRead"]
+    },
+    "review": {
+      "title": "Book Review",
+      "description": "Book evaluation written by the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bookId": { "type": "string" },
+        "bookTitle": { "type": "string" },
+        "author": { "type": "string" },
+        "rating": { "type": "number" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "bookId", "content"]
+    },
+    "quotation": {
+      "title": "Book Quotation",
+      "description": "Saved quote or excerpt from a book",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bookId": { "type": "string" },
+        "bookTitle": { "type": "string" },
+        "author": { "type": "string" },
+        "pageNumber": { "type": "number" },
+        "quoteText": { "type": "string" },
+        "userNote": { "type": "string" },
+        "tags": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "quoteText"]
+    },
+    "vocabularyItem": {
+      "title": "Vocabulary Word",
+      "description": "Word saved during reading with definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "word": { "type": "string" },
+        "meaning": { "type": "string" },
+        "sourceBookTitle": { "type": "string" },
+        "exampleSentence": { "type": "string" },
+        "isLearned": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "word", "meaning"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "userProfile",
+      "description": "User profile collection"
+    },
+    "/userBooks/{bookId}": {
+      "schema": "userBook",
+      "description": "User personal books collection"
+    },
+    "/readingSessions/{sessionId}": {
+      "schema": "readingSession",
+      "description": "Daily reading session records"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "review",
+      "description": "User book reviews"
+    },
+    "/quotations/{quotationId}": {
+      "schema": "quotation",
+      "description": "User saved quotes"
+    },
+    "/vocabulary/{wordId}": {
+      "schema": "vocabularyItem",
+      "description": "User vocabulary notebook"
+    }
+  }
+}

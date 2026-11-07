@@ -1,0 +1,36 @@
+name: Android Widget APK Derle
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-widget-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu Çek (Checkout)
+        uses: actions/checkout@v4
+
+      - name: JDK 17 Kurulumu
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Gradle İzinlerini Ayarla
+        run: |
+          cd android-widget
+          chmod +x gradlew || true
+
+      - name: Android Widget APK Derle (Release / Debug)
+        run: |
+          cd android-widget
+          gradle assembleRelease || gradle assembleDebug
+
+      - name: APK Dosyasını Çıktı Olarak Yükle (Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DijitalKutuphanem-Widget-APK
+          path: |
+            android-widget/app/build/outputs/apk/**/*.apk

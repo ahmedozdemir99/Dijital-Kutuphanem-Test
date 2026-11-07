@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <script>
+      (function() {
+        // Prevent benign Vite HMR "WebSocket closed without opened" in preview environment
+        try {
+          const OrigWebSocket = window.WebSocket;
+          if (OrigWebSocket) {
+            window.WebSocket = function(url, protocols) {
+              const ws = new OrigWebSocket(url, protocols);
+              let hasOpened = false;
+              ws.addEventListener('open', function() {
+                hasOpened = true;
+              }, { capture: true });
+              ws.addEventListener('close', function() {
+                if (!hasOpened) {
+                  hasOpened = true;
+                  try {
+                    ws.dispatchEvent(new Event('open'));
+                  } catch (err) {}
+                }
+              }, { capture: true });
+              return ws;
+            };
+            window.WebSocket.prototype = OrigWebSocket.prototype;
+            window.WebSocket.CONNECTING = OrigWebSocket.CONNECTING;
+            window.WebSocket.OPEN = OrigWebSocket.OPEN;
+            window.WebSocket.CLOSING = OrigWebSocket.CLOSING;
+            window.WebSocket.CLOSED = OrigWebSocket.CLOSED;
+          }
+        } catch (e) {}
+
+        window.addEventListener('error', function(e) {
+          const msg = (e && (e.message || (e.error && e.error.message))) || '';
+          if (typeof msg === 'string' && (msg.includes('WebSocket') || msg.includes('@vite/client'))) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          const reason = (e && e.reason) ? (e.reason.message || String(e.reason)) : '';
+          if (typeof reason === 'string' && (reason.includes('WebSocket') || reason.includes('@vite/client'))) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
+    <title>Dijital Kütüphanem - Kişisel Okuma ve İlim Yolculuğu</title>
+    <meta name="description" content="Kişisel kitap arşivi, dijital okuma platformu, ömür boyu okuma müfredatı, eser keşif sistemi, edebiyat ve şiir arşivi." />
+    <meta property="og:title" content="Dijital Kütüphanem" />
+    <meta property="og:description" content="Premium Personal Library & Lifelong Learning System" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#F8F5EF" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Kütüphanem" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    
+    <!-- Google Fonts: Playfair Display, Cormorant Garamond, Inter, Amiri, Scheherazade New -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Scheherazade+New:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+      html, body {
+        background-color: #F8F5EF;
+        margin: 0;
+        padding: 0;
+      }
+      html.dark, html.dark body {
+        background-color: #141414;
+      }
+    </style>
+  </head>
+  <body class="bg-[#F8F5EF] dark:bg-[#141414] text-slate-800 dark:text-slate-100 font-sans antialiased selection:bg-[#742C3C] selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

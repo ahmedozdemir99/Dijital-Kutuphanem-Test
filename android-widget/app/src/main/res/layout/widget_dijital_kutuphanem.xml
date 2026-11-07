@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="8dp">
+
+    <!-- Top Golden Title Bar -->
+    <LinearLayout
+        android:id="@+id/widget_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
+        android:paddingBottom="5dp">
+
+        <ImageView
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@drawable/ic_widget_icon"
+            android:contentDescription="Dijital Kütüphanem İkonu" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="DİJİTAL KÜTÜPHANEM"
+            android:textColor="#F5E6C8"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.08" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="✦ CANLI İLİM"
+            android:textColor="#D8BA76"
+            android:textSize="8sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Thin Golden Divider Line -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#33B79A63" />
+
+    <!-- 3 Equal Width Columns -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal"
+        android:baselineAligned="false"
+        android:paddingTop="5dp">
+
+        <!-- ================= 1. SÜTUN: KİTAP ================= -->
+        <LinearLayout
+            android:id="@+id/col_kitap"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:padding="2dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1. KİTAP"
+                android:textColor="#E2C382"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txt_kitap_yuzde"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="%82"
+                android:textColor="#FFF8E7"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txt_kitap_sayfa"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="33 / 40 syf"
+                android:textColor="#FFFDF8"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Bugün ↗"
+                android:textColor="#B79A63"
+                android:textSize="8sp" />
+        </LinearLayout>
+
+        <!-- Divider Line 1 -->
+        <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:background="#26B79A63" />
+
+        <!-- ================= 2. SÜTUN: KUR'AN ================= -->
+        <LinearLayout
+            android:id="@+id/col_quran"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:padding="2dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="2. KUR'AN"
+                android:textColor="#E2C382"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txt_quran_yuzde"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="%23"
+                android:textColor="#A7F3D0"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txt_quran_hizb"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="14. Hizb"
+                android:textColor="#FFFDF8"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Kur'an ↗"
+                android:textColor="#B79A63"
+                android:textSize="8sp" />
+        </LinearLayout>
+
+        <!-- Divider Line 2 -->
+        <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:background="#26B79A63" />
+
+        <!-- ================= 3. SÜTUN: İLİM YOLCULUĞUM ================= -->
+        <LinearLayout
+            android:id="@+id/col_ilim"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:padding="2dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="3. İLİM"
+                android:textColor="#E2C382"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txt_ilim_yuzde"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="%4.2"
+                android:textColor="#FDE68A"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txt_ilim_eser"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="6 Eser"
+                android:textColor="#FFFDF8"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="40 Yıl ↗"
+                android:textColor="#B79A63"
+                android:textSize="8sp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

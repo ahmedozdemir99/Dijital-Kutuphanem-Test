@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#842F41" />
+      <stop offset="50%" stop-color="#742C3C" />
+      <stop offset="100%" stop-color="#4A1522" />
+    </linearGradient>
+    <linearGradient id="goldRibbon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFEAA6" />
+      <stop offset="50%" stop-color="#D4AF37" />
+      <stop offset="100%" stop-color="#9E7519" />
+    </linearGradient>
+    <filter id="bookGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#1F050B" flood-opacity="0.65" />
+    </filter>
+  </defs>
+
+  <!-- Deep Regal Ottoman Burgundy Background -->
+  <rect width="512" height="512" fill="url(#bgGrad)" />
+
+  <!-- Subtle Atmospheric Center Halo -->
+  <circle cx="256" cy="245" r="175" fill="#FFFFFF" opacity="0.04" />
+
+  <!-- The Simple Clean White Open Book (Sade Beyaz Açık Kitap) -->
+  <g filter="url(#bookGlow)" transform="translate(0, -12)">
+    <!-- Hardcover Outer Rim (Subtle Gold Trim) -->
+    <path d="M 100 330 C 156 304, 216 312, 256 332 C 296 312, 356 304, 412 330 L 412 339 C 356 313, 296 321, 256 341 C 216 321, 156 313, 100 339 Z" fill="url(#goldRibbon)" />
+
+    <!-- Underlying Page Shadow Base (Layered Thickness) -->
+    <path d="M 108 322 C 160 298, 216 306, 256 326 C 296 306, 352 298, 404 322 L 404 196 C 352 172, 296 180, 256 200 C 216 180, 160 172, 108 196 Z" fill="#EDE5D5" />
+
+    <!-- Pure White Open Book - Left Wing Page -->
+    <path d="M 116 186 C 166 162, 220 170, 252 192 L 252 318 C 220 296, 166 288, 116 312 Z" fill="#FFFFFF" />
+
+    <!-- Pure White Open Book - Right Wing Page -->
+    <path d="M 396 186 C 346 162, 292 170, 260 192 L 260 318 C 292 296, 346 288, 396 312 Z" fill="#FFFFFF" />
+
+    <!-- Left Wing Delicate Page Lines -->
+    <path d="M 142 222 C 176 206, 212 212, 236 226" fill="none" stroke="#E5DAC8" stroke-width="3.5" stroke-linecap="round" />
+    <path d="M 142 250 C 176 234, 212 240, 236 254" fill="none" stroke="#E5DAC8" stroke-width="3.5" stroke-linecap="round" />
+    <path d="M 142 278 C 176 262, 212 268, 236 282" fill="none" stroke="#E5DAC8" stroke-width="3.5" stroke-linecap="round" />
+
+    <!-- Right Wing Delicate Page Lines -->
+    <path d="M 370 222 C 336 206, 300 212, 276 226" fill="none" stroke="#E5DAC8" stroke-width="3.5" stroke-linecap="round" />
+    <path d="M 370 250 C 336 234, 300 240, 276 254" fill="none" stroke="#E5DAC8" stroke-width="3.5" stroke-linecap="round" />
+    <path d="M 370 278 C 336 262, 300 268, 276 282" fill="none" stroke="#E5DAC8" stroke-width="3.5" stroke-linecap="round" />
+
+    <!-- Center Spine Binding Line -->
+    <line x1="256" y1="192" x2="256" y2="324" stroke="#C4B394" stroke-width="4" stroke-linecap="round" />
+
+    <!-- Center Spine Hanging Gold Bookmark Ribbon -->
+    <path d="M 250 322 L 250 382 L 256 374 L 262 382 L 262 322 Z" fill="url(#goldRibbon)" />
+  </g>
+</svg>

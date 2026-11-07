@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Personal User Books
+    match /userBooks/{bookId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Reading Sessions
+    match /readingSessions/{sessionId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Reviews
+    match /reviews/{reviewId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Quotations
+    match /quotations/{quotationId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Vocabulary
+    match /vocabulary/{wordId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Catalogs
+    match /booksCatalog/{catalogId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /poetryCatalog/{poetryId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /authors/{authorId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Quran Progress
+    match /quranProgress/{userId} {
+      allow read, write: if isSignedIn();
+    }
+
+  }
+}

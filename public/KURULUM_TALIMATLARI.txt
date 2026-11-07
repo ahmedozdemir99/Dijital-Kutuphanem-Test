@@ -1,0 +1,30 @@
+====================================================================
+DİJİTAL KÜTÜPHANEM — CANLI ANDROID WIDGET KURULUM PAKETİ (ZIP)
+====================================================================
+
+Bu zip paketi, Android telefonunuzdaki One4Widget, KWGT veya WebWidget
+uygulamalarında canlı "Günün Vecizesi + Okuma & Hatim Takip Widget'ı"nı
+çalıştırmanız için gerekli tüm dosyaları içermektedir.
+
+--------------------------------------------------------------------
+YÖNTEM 1: One4Widget / Custom Widget Uygulamasında Yükleme (En Kolay)
+--------------------------------------------------------------------
+1. Ekranınızdaki "+ Ekle" butonuna basın.
+2. Katman türü olarak "Web Görünümü (WebView)" veya "Web Frame" seçin.
+3. Bağlantı (URL) adresi kısmına aşağıdaki canlı adresi yapıştırın:
+
+   https://dijitalkutuphanem.ai.studio/?widget=true
+
+4. Kırmızı "Ana ekrana ekle" butonuna basarak widget'ı kaydedin.
+
+--------------------------------------------------------------------
+YÖNTEM 2: Zip İçindeki 'standalone_widget.html' Dosyasını Kullanma
+--------------------------------------------------------------------
+Zip paketinden çıkan 'standalone_widget.html' dosyasını telefonunuzun
+Dahili Depolama / Download klasörüne çıkarın ve yerel dosya yolu olarak
+uygulamanıza bağlayın.
+
+--------------------------------------------------------------------
+CANLI WIDGET BAĞLANTI ADRESİ (KOPYALAYIN):
+https://dijitalkutuphanem.ai.studio/?widget=true
+====================================================================

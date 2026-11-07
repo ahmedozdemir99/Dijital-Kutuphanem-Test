@@ -1,0 +1,190 @@
+ar.abdulbasitmurattal : عبد الباسط عبد الصمد المرتل
+ar.abdullahbasfar : عبد الله بصفر
+ar.abdurrahmaansudais : عبدالرحمن السديس
+ar.abdulsamad : عبدالباسط عبدالصمد
+ar.shaatree : أبو بكر الشاطري
+ar.ahmedajamy : أحمد بن علي العجمي
+ar.alafasy : مشاري العفاسي
+ar.hanirifai : هاني الرفاعي
+ar.husary : محمود خليل الحصري
+ar.husarymujawwad : محمود خليل الحصري (المجود)
+ar.hudhaify : علي بن عبدالرحمن الحذيفي
+ar.ibrahimakhbar : إبراهيم الأخضر
+ar.mahermuaiqly : ماهر المعيقلي
+ar.minshawi : محمد صديق المنشاوي
+ar.minshawimujawwad : محمد صديق المنشاوي (المجود)
+ar.muhammadayyoub : محمد أيوب
+ar.muhammadjibreel : محمد جبريل
+ar.saoodshuraym : سعود الشريم
+en.walk : Ibrahim Walk
+fa.hedayatfarfooladvand : فولادوند (با صدای هدایت‌فر)
+ar.parhizgar : شهریار پرهیزگار
+ur.khan : شمشاد علی خان
+zh.chinese : 中文
+fr.leclerc : Youssouf Leclerc
+ar.aymanswoaid : أيمن سويد
+ru.kuliev-audio : Эльмир Кулиев (1MuslimApp)
+ru.kuliev-audio-2 : Эльмир Кулиев 2 (1MuslimApp)
+kk.khalifahaltai-audio : Қазақ - Халифа Алтайдың
+ar.alafasy-2 : مشاري العفاسي
+ar.husary-2 : محمود خليل الحصري
+ar.mahermuaiqly-2 : ماهر المعيقلي
+ar.hudhaify-2 : علي بن عبدالرحمن الحذيفي
+ar.husarymujawwad-2 : محمود خليل الحصري (المجود)
+ar.minshawi-2 : محمد صديق المنشاوي
+ar.muhammadayyoub-2 : محمد أيوب
+ar.muhammadjibreel-2 : محمد جبريل
+tr.vakfi-audio : Diyanet Vakfı
+ar.abdulazizazzahrani : عبد العزيز الزهراني
+ar.abdulbariaththubaity : عبد الباري الثبيتي
+ar.abdulbarimohammed : عبد الباري محمد
+ar.abdulbasitmujawwad : عبد الباسط عبد الصمد (مجوَّد)
+ar.abdulbasitmurattal-surah : عبد الباسط عبد الصمد (مرتَّل)
+ar.abdulkareemalhazmi : عبد الكريم الحازمي
+ar.abdullahalmatrood : عبد الله المطرود
+ar.abdullahawadaljuhani : عبد الله عواد الجهني
+ar.abdullahbasfar-surah : عبد الله بصفر
+ar.abdullahkhayat : عبد الله خياط
+ar.abdullahkhulaifi : عبد الله الخليفي
+ar.abdulmohsenalharthy : عبد المحسن الحارثي
+ar.abdulmunimabdulmubdi : عبد المنعم عبد المبدئ
+ar.abdulwadoodhaneef : عبد الودود حنيف
+ar.abdurrasheedsufiabialhaarithanalkasaaee : عبد الرشيد صوفي (أبو الحارث عن الكسائي)
+ar.abdurrasheedsufiaddoorianabiamr : عبد الرشيد صوفي (الدوري عن أبي عمرو)
+ar.abdurrasheedsufishubahanasim : عبد الرشيد صوفي (شعبة عن عاصم)
+ar.abdurrasheedsufisoosi : عبد الرشيد صوفي (السوسي)
+ar.abuabdullahmuniraltounsi : أبو عبد الله منير التونسي
+ar.abubakraldhabi : أبو بكر الذهبي
+ar.adilkalbani : عادل الكلباني
+ar.ahmadalhawashy : أحمد الحواشي
+ar.ahmadkhaderaltarabulsi : أحمد خضر الطرابلسي
+ar.ahmadsulaiman : أحمد سليمان
+ar.ahmedalajmi : أحمد العجمي
+ar.ahmedalhammad : أحمد الحماد
+ar.ahmedalmisbahi : أحمد المصباحي
+ar.ahmedamir : أحمد عامر
+ar.ahmedmohamedsalama : أحمد محمد سلامة
+ar.ahmedsaber : أحمد صابر
+ar.alafasy-surah : مشاري راشد العفاسي
+ar.alashryomran : العشري عمران
+ar.alfatehmuhammadzubair : الفاتح محمد الزبير
+ar.alhusaynialazazi : الحسيني العزازي
+ar.alhusaynialazazichildren : الحسيني العزازي (مع الأطفال)
+ar.aliabdurrahmanalhuthaify : علي عبد الرحمن الحذيفي
+ar.aliabdurrahmanalhuthaifyqaloon : علي عبد الرحمن الحذيفي (قالون)
+ar.alihajjajsouissi : علي حجاج السويسي
+ar.alzainmohamedahmed : الزين محمد أحمد
+ar.aymanswed : أيمن سويد
+ar.azizalili : عزيز عليلي
+ar.basselabdulrahmanraoui : باسل عبد الرحمن الراوي
+ar.benkirane : بنكيران
+ar.darwishfarajdarwishalattar : درويش فرج درويش العطار
+ar.emadalmansary : عماد المنصري
+ar.ezzatsabri : عزت صبري
+ar.faresabbad : فارس عباد
+ar.fouadalkhamiri : فؤاد الخامري
+ar.hamadsinan : حمد سنان
+ar.hamdyalsayedtolbasaad : حمدي السيد طلبة سعد
+ar.haniarrifai : هاني الرفاعي
+ar.hasanhashem : حسن هاشم
+ar.hassansaleh : حسن صالح
+ar.hatemfarid : حاتم فريد
+ar.ibrahimalakhdar : إبراهيم الأخضر
+ar.ibrahimaldossari : إبراهيم الدوسري
+ar.ibrahimaljormy : إبراهيم الجرمي
+ar.ilhantok : إلهان توك
+ar.imadzuhairhafez : عماد زهير حافظ
+ar.jamaanalosaimi : جمعان العصيمي
+ar.jamalshakerabdullah : جمال شاكر عبد الله
+ar.jazzaalswaileh : جزاع الصويلح
+ar.kamel : كامل
+ar.khaledalqahtani : خالد القحطاني
+ar.khaledbarakat : خالد بركات
+ar.khalidabdulkafi : خالد عبد الكافي
+ar.khalidaljalil : خالد الجليل
+ar.khalidalmohanna : خالد المهنا
+ar.khalifaaltunaiji : خليفة الطنيجي
+ar.laayounelkouchi : العيون الكوشي
+ar.lesaintcorantraduitenfrancais : القرآن الكريم مترجمًا بالفرنسية
+ar.mahershakhashiro : ماهر شخاشيرو
+ar.mahmoodalrifai : محمود الرفاعي
+ar.mahmoudalialbanna : محمود علي البنا
+ar.mahmoudelsheimy : محمود الشيمي
+ar.mahmoudsaaddarouich : محمود سعد درويش
+ar.mahmoudsayedeltayeb : محمود سيد الطيب
+ar.misharyrashidalafasy : مشاري راشد العفاسي
+ar.moeedhalharthi : معيض الحارثي
+ar.mohamedabdelaziz : محمد عبد العزيز
+ar.mohamedabdelhakimsaadalabdullah : محمد عبد الحكيم سعد العبد الله
+ar.mohamedaljaberyalheyani : محمد الجابري الحياني
+ar.mohamedalmohisni : محمد المحيسني
+ar.mohamedelkantaoui : محمد القنطاوي
+ar.mohamedhassan : محمد حسان
+ar.mohamedmaabad : محمد معبد
+ar.mohamedosmankhan : محمد عثمان خان
+ar.mohamedshaabanabuqarn : محمد شعبان أبو قرن
+ar.mohamedtablawi : محمد الطبلاوي
+ar.mohammadismaeelalmuqaddim : محمد إسماعيل المقدم
+ar.mohammadrachadalshareef : محمد رشاد الشريف
+ar.mohammedbinsalehabuzaid : محمد بن صالح أبو زيد
+ar.muftahalsaltany : مفتاح السلطني
+ar.muhammadabdulkareem : محمد عبد الكريم
+ar.muhammadalaalimaldokali : محمد العالم الدوكالي
+ar.muhammadalluhaidan : محمد اللحيدان
+ar.muhammadalmehysni : محمد المحيسني
+ar.muhammadalsubayyil : محمد السبيل
+ar.muhammadanwarshahat : محمد أنور شحات
+ar.muhammadayyub : محمد أيوب
+ar.muhammadsalehalimshah : محمد صالح عالم شاه
+ar.muhammadsiddiqalminshawimujawwad : محمد صديق المنشاوي (مجوَّد)
+ar.muhammadsulaimanpatel : محمد سليمان باتل
+ar.musabilal : موسى بلال
+ar.mustafaallahouni : مصطفى اللاهوني
+ar.mustafaismail : مصطفى إسماعيل
+ar.mustafaraadalazzawi : مصطفى رعد العزاوي
+ar.mustaphagharbi : مصطفى غربي
+ar.nabilarrifai : نبيل الرفاعي
+ar.nasseralqatami : ناصر القطامي
+ar.neamahalhassan : نعمة الحسن
+ar.obeikan : العبيكان
+ar.oimaoqataris : ar.oimaoqataris
+ar.omaralkazabri : عمر القزابري
+ar.osamabinalialghanim : أسامة بن علي الغانم
+ar.rachidbelalia : رشيد بلعالية
+ar.saberabdulhakam : صابر عبد الحكم
+ar.sadaqatali : صداقت علي
+ar.sahlyasin : سهل ياسين
+ar.saidalshaalan : سعيد الشعلان
+ar.salahalbudair : صلاح البدير
+ar.salahalhashem : صلاح الهاشم
+ar.salahbaothman : صلاح باعثمان
+ar.samirbelaachya : سمير بلعشية
+ar.saudalshuraim : سعود الشريم
+ar.sayedramadan : سيد رمضان
+ar.shahriarparhizgar : شهريار پرهيزگار
+ar.sudaisshuraymnaeemsultan : السديس والشريم (مع ترجمة نعيم سلطان)
+ar.tamerislam : تامر إسلام
+ar.tareqabdulganidaawob : طارق عبد الغني دعوب
+ar.tawfeeqassayegh : توفيق الصايغ
+ar.turkiebeidalmarri : تركي عبيد المري
+ar.waeldesouky : وائل الدسوقي
+ar.waelradwanqureshi : وائل رضوان قريشي
+ar.waleedidreesalmaneese : وليد إدريس المنيسي
+ar.waleednaehi : وليد الناهي
+ar.waleedsamiraliabdulmajidsorour : وليد سمير علي عبد المجيد سرور
+ar.walidalshatti : وليد الشطي
+ar.walidfathibashta : وليد فتحي بشتة
+ar.yahyahawwa : يحيى حوى
+ar.yassenaljazairi : ياسين الجزائري
+ar.yasseraldossari : ياسر الدوسري
+ar.yasseralmazroyee : ياسر المزروعي
+ar.yasserqureshi : ياسر قريشي
+ar.yassersalama : ياسر سلامة
+ar.yassersarhaneldeeb : ياسر سرحان الديب
+ar.yousufalshoaey : يوسف الشويعي
+ar.yousufbinnoahahmad : يوسف بن نوح أحمد
+en.misharyrashidalafasyenglishtranslationsaheehibrahimwalk : Mishary Rashid Alafasy with Saheeh International translation (Ibrahim Walk)
+en.muhammadayyubenglishtranslationmuhsinkhanmikaalwaters : Muhammad Ayyub with Muhsin Khan translation (Mikaal Waters)
+en.sudaisandshuraymenglishtranslationpickthallaslamathar : Sudais & Shuraym with Pickthall translation (Aslam Athar)
+my.hashimtinmyint : Hashim Tin Myint
+uz.sodik-audio : Мухаммад Содик
