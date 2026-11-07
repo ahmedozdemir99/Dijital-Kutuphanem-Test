@@ -5,7 +5,7 @@ import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import webpush from 'web-push';
-import { askRobiBrain } from './src/utils/robiBrain.ts';
+import { generateRobiChat, getRobiSourceUrls, normalizeRobiMode } from './src/utils/robiChat.ts';
 
 // WebPush VAPID Setup for Background Notifications (delivers even when app is closed)
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BB91Tt47oG2rr99hCjR0-nSCVHnDio1XzwIvZqd5bem2W6lQndUzw-uvYVH3pdClkjKwcdVyjNcTv6bV3EOIUnQ';
@@ -191,16 +191,6 @@ async function startServer() {
     });
   });
 
-  // Intelligent Dynamic Brain Engine: Uses RAG context & encyclopedic knowledge base
-  function generateDynamicRobiFallback(message: string, context: any, denseContext?: string, history?: any[]): string {
-    return askRobiBrain({
-      message,
-      history,
-      densePromptContext: denseContext,
-      userSummary: context
-    });
-  }
-
   // Helper hash function for deterministic variation based on prompt text
   function hashString(str: string): number {
     let hash = 0;
@@ -324,89 +314,32 @@ Yanıtını MUTLAKA sadece aşağıdaki JSON formatında ver (ekstra markdown t�
   });
 
   app.post('/api/ai-chat', async (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
+    const { message, mode, history, userContext, densePromptContext, userSummary } = req.body ?? {};
+    const question = typeof message === 'string' ? message.trim() : '';
+    if (!question || question.length > 12000) {
+      return res.status(400).json({ error: 'Lütfen 1 ile 12.000 karakter arasında bir soru veya metin gir.' });
+    }
+
+    const chatMode = normalizeRobiMode(mode);
+    if (chatMode === 'source' && getRobiSourceUrls(question).length === 0) {
+      return res.status(400).json({ error: 'Kaynak incelemek için mesajına herkese açık bir web bağlantısı ekle.' });
+    }
+
+    const archive = typeof densePromptContext === 'string' ? densePromptContext
+      : typeof userContext === 'string' ? userContext : userContext ? JSON.stringify(userContext) : '';
+
     try {
-      const { message, history, userContext, densePromptContext, userSummary } = req.body;
-
-      const ragContextText = densePromptContext || (typeof userContext === 'string' ? userContext : JSON.stringify(userContext || {}));
-
-      const systemInstruction = `Sen Dijital Kütüphanem uygulamasının bilge, neşeli, felsefi ve ansiklopedik birikimli sincap koçu "Robi"sin (🐿️ İlim, Kültür ve Tefekkür Koçu). 
-Kullanıcı için felsefe, edebiyat, teoloji, tarih ve kişisel gelişim yolculuğunda entelektüel bir yoldaş ve koçsun.
-
-[GÖREVLERİN VE KİŞİLİĞİN]:
-1. Entelektüel ve Ansiklopedik Derinlik: Yüzeysel, kısa veya geçiştirici cevaplar verme; felsefi akımlara, klasik başyapıtlara, kavramsal tahlillere ve dil etimolojisine değinen doyurucu, derin ve zengin açıklamalar sun.
-2. Doğrudan ve Canlı Odak: Kullanıcının sorduğu soruya doğrudan odaklan. ASLA kütüphanedeki kitapların sayfa numaralarını veya okuma yüzdelerini mekanik bir liste halinde ardı ardına sıralama veya kopyalama! RAG bağlamındaki eserleri sadece konuyla doğrudan ilgiliyse zarif ve canlı bir dost sohbeti içinde hikmetle bağla.
-3. 12 Kategori, Şiir ve 40 Yıllık Müfredat Hakimiyeti: Kütüphanedeki 12 ana kategoriye, 256 şiire ve 40 yıllık ilim müfredatına tam hakimsin. Gazali, İbn Rüşd, Kant, Tanpınar, Cemil Meriç, Dostoyevski, Mevlana, Sezai Karakoç ve diğer klasik şahsiyetlerin düşüncelerini harmanla.
-4. Sesli İletişime Uygun Akıcı Türkçe: Sesli dinlendiğin için sıcak, bilge, neşeli ve akıcı bir Türkçe ile konuş.
-
-[Okur Bağlamı ve Vektör Arama Özeti]:
-${ragContextText}
-`;
-
-      const trimmedHistory = (history || []).slice(-8);
-
-      const contents = [
-        ...trimmedHistory.map((m: any) => ({
-          role: m.role === 'user' ? 'user' : 'model',
-          parts: [{ text: m.text || m.parts?.[0]?.text || '' }]
-        })),
-        { 
-          role: 'user', 
-          parts: [{ text: message }] 
-        }
-      ];
-
-      let response;
-      // gemini-3.1-flash-lite is operational, fast, and has active free-tier quota
-      const modelsToTry = [
-        'gemini-3.1-flash-lite',
-        'gemini-2.5-flash-lite',
-        'gemini-2.0-flash-lite',
-        'gemini-2.5-flash',
-        'gemini-flash-latest',
-        'gemini-3.8-flash'
-      ];
-      let lastError: any = null;
-      const currentApiKey = process.env.GEMINI_API_KEY || '';
-      const currentAi = getGenAI();
-
-      if (currentApiKey) {
-        for (const m of modelsToTry) {
-          // Attempt direct generation first for fast, reliable, substantive response
-          try {
-            response = await currentAi.models.generateContent({
-              model: m,
-              contents: contents,
-              config: {
-                systemInstruction
-              }
-            });
-            if (response && response.text) {
-              console.log(`[Gemini Success Direct] Model: ${m}`);
-              break;
-            }
-          } catch (modelErr: any) {
-            console.warn(`[Gemini Direct Error] ${m}:`, modelErr?.status, modelErr?.message?.substring(0, 120));
-            lastError = modelErr;
-          }
-        }
-      }
-
-      if (response && response.text) {
-        return res.json({ reply: response.text });
-      }
-
-      // Seamless fallback to intelligent encyclopedic persona with rich domain knowledge
-      const dynamicReply = generateDynamicRobiFallback(message, userContext || userSummary, densePromptContext, history);
-      return res.json({ 
-        reply: dynamicReply,
-        isFallback: true
-      });
-
-    } catch (err: any) {
-      console.warn("AI Chat Error intercepted:", err?.message || err);
-      const dynamicReply = generateDynamicRobiFallback(req.body?.message, req.body?.userContext || req.body?.userSummary, req.body?.densePromptContext, req.body?.history);
-      return res.json({ reply: dynamicReply, isFallback: true });
+      const ai = process.env.GEMINI_API_KEY?.trim() ? getGenAI() : undefined;
+      return res.json(await generateRobiChat(ai, {
+        message: question,
+        mode: chatMode,
+        history,
+        archive,
+        summary: userSummary ?? userContext,
+      }));
+    } catch {
+      return res.status(500).json({ error: 'Robi şu anda yanıt veremiyor. Lütfen yeniden dene.' });
     }
   });
 
