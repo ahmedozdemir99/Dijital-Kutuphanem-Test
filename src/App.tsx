@@ -1,36 +1,34 @@
-import React from 'react';
+import React, { lazy, Suspense, useTransition } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Flame, BookOpen, Compass, Archive, User, Moon, Sun, Download, ShieldCheck, Sparkles, Plus, Quote as QuoteIcon, FileText, Star, TrendingUp, MessageSquare, X 
 } from 'lucide-react';
 import { AppProvider, useApp } from './context/AppContext';
 import { TodayView } from './components/TodayView';
-import { LibraryView } from './components/LibraryView';
-import { ExploreView } from './components/ExploreView';
-import { ArchiveView } from './components/ArchiveView';
-import { StatsView } from './components/StatsView';
-import { ChatView } from './components/ChatView';
-import { ProfileView } from './components/ProfileView';
-import { ReaderModal } from './components/ReaderModal';
 import { GlobalAddModals } from './components/GlobalAddModals';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { BookDetailModal } from './components/BookDetailModal';
 import { StandaloneWidgetView } from './components/StandaloneWidgetView';
-import { MainTab } from './types';
+import { WidgetView } from './components/WidgetView';
+import type { MainTab } from './types';
 
+const tabViews = {
+  today: TodayView,
+  library: lazy(() => import('./components/LibraryView').then(module => ({ default: module.LibraryView }))),
+  explore: lazy(() => import('./components/ExploreView').then(module => ({ default: module.ExploreView }))),
+  archive: lazy(() => import('./components/ArchiveView').then(module => ({ default: module.ArchiveView }))),
+  stats: lazy(() => import('./components/StatsView').then(module => ({ default: module.StatsView }))),
+  chat: lazy(() => import('./components/ChatView').then(module => ({ default: module.ChatView }))),
+  profile: lazy(() => import('./components/ProfileView').then(module => ({ default: module.ProfileView }))),
+} satisfies Record<MainTab, React.ComponentType>;
+
+const ReaderModal = lazy(() => import('./components/ReaderModal').then(module => ({ default: module.ReaderModal })));
 
 function MainAppContent() {
-  const isWidgetMode = window.location.search.includes('widget') || 
-                       window.location.hash.includes('widget') || 
-                       window.location.pathname.endsWith('/widget');
-
-  if (isWidgetMode) {
-    return <StandaloneWidgetView />;
-  }
   const { 
     activeTab, 
-    setActiveTab, 
+    setActiveTab: setCurrentTab,
     activeBookForReader, 
     setActiveBookForReader,
     selectedBookForDetail,
@@ -50,6 +48,12 @@ function MainAppContent() {
   } = useApp();
 
   const [isAddMenuOpen, setIsAddMenuOpen] = React.useState(false);
+  const [isTabPending, startTabTransition] = useTransition();
+  const ActiveView = tabViews[activeTab];
+
+  const setActiveTab = (tab: MainTab) => {
+    startTabTransition(() => setCurrentTab(tab));
+  };
 
   return (
     <div className="min-h-screen bg-[#F8F5EF] dark:bg-[#141414] text-slate-800 dark:text-slate-100 flex flex-col selection:bg-[#742C3C] selection:text-white pb-24">
@@ -229,14 +233,10 @@ function MainAppContent() {
       </header>
 
       {/* Main View Container */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 pt-4">
-        {activeTab === 'today' && <TodayView />}
-        {activeTab === 'library' && <LibraryView />}
-        {activeTab === 'explore' && <ExploreView />}
-        {activeTab === 'archive' && <ArchiveView />}
-        {activeTab === 'stats' && <StatsView />}
-        {activeTab === 'chat' && <ChatView />}
-        {activeTab === 'profile' && <ProfileView />}
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 pt-4" aria-busy={isTabPending}>
+        <Suspense fallback={<p role="status" className="py-6 text-center text-sm">Yükleniyor…</p>}>
+          <ActiveView />
+        </Suspense>
       </main>
 
       {/* Global Creation Modals Overlay */}
@@ -245,14 +245,16 @@ function MainAppContent() {
 
       {/* Reader Modal Overlay when active */}
       {activeBookForReader && (
-        <ReaderModal 
-          book={activeBookForReader}
-          onClose={() => setActiveBookForReader(null)}
-          onUpdatePage={(bookId, page) => updateBookProgress(bookId, page)}
-          onAddQuote={(quoteText, pageNum, note) => {
-            addQuotation(quoteText, pageNum, note, activeBookForReader.id, activeBookForReader.title, activeBookForReader.author);
-          }}
-        />
+        <Suspense fallback={null}>
+          <ReaderModal
+            book={activeBookForReader}
+            onClose={() => setActiveBookForReader(null)}
+            onUpdatePage={(bookId, page) => updateBookProgress(bookId, page)}
+            onAddQuote={(quoteText, pageNum, note) => {
+              addQuotation(quoteText, pageNum, note, activeBookForReader.id, activeBookForReader.title, activeBookForReader.author);
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Book Detail Modal */}
@@ -357,8 +359,6 @@ function MainAppContent() {
   );
 }
 
-import { WidgetView } from './components/WidgetView';
-
 export default function App() {
   const isWidget = typeof window !== 'undefined' && (
     window.location.pathname.startsWith('/widget') || 
@@ -369,9 +369,12 @@ export default function App() {
     return <WidgetView />;
   }
 
+  const isStandaloneWidget = window.location.search.includes('widget') ||
+    window.location.hash.includes('widget') || window.location.pathname.endsWith('/widget');
+
   return (
     <AppProvider>
-      <MainAppContent />
+      {isStandaloneWidget ? <StandaloneWidgetView /> : <MainAppContent />}
     </AppProvider>
   );
 }

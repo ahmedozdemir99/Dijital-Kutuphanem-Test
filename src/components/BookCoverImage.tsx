@@ -7,6 +7,7 @@ interface BookCoverImageProps {
   author?: string;
   category?: string;
   className?: string;
+  loading?: 'eager' | 'lazy';
   isMultiVolume?: boolean;
   volumeNumber?: number;
   progressPercent?: number; // 0 to 100
@@ -31,6 +32,7 @@ export const BookCoverImage: React.FC<BookCoverImageProps> = ({
   author,
   category = 'Edebiyat',
   className = 'w-full h-full object-cover',
+  loading,
   isMultiVolume,
   volumeNumber,
   progressPercent = 0,
@@ -81,6 +83,8 @@ export const BookCoverImage: React.FC<BookCoverImageProps> = ({
       alt={alt || title}
       onError={() => setHasError(true)}
       className={className}
+      loading={loading}
+      decoding={loading === 'lazy' ? 'async' : undefined}
       referrerPolicy="no-referrer"
     />
   );

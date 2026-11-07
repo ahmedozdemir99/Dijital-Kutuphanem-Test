@@ -497,6 +497,7 @@ export const LibraryView: React.FC = () => {
                       <BookCoverImage 
                         src={book.coverUrl} 
                         alt={book.title}
+                        loading="lazy"
                         title={book.title}
                         author={book.author}
                         category={book.category}
@@ -590,6 +591,8 @@ export const LibraryView: React.FC = () => {
                           <img 
                             src={book.coverUrl} 
                             alt={book.title} 
+                            loading="lazy"
+                            decoding="async"
                             className="w-9 h-12 rounded object-cover book-shadow shrink-0" 
                             referrerPolicy="no-referrer"
                           />
