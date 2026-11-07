@@ -8,13 +8,12 @@ import {
 import { UserBook } from '../types';
 import { PdfViewer } from './PdfViewer';
 import { EpubViewer } from './EpubViewer';
-import { getBookFileFromIDB } from '../lib/indexedDb';
 import { useApp } from '../context/AppContext';
 
 interface ReaderModalProps {
   book: UserBook;
   onClose: () => void;
-  onUpdatePage: (bookId: string, newPage: number) => void;
+  onUpdatePage: (bookId: string, newPage: number, fileLength?: number) => void;
   onAddQuote: (quoteText: string, pageNum: number, note?: string) => void;
 }
 
@@ -27,45 +26,9 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
   const { userProfile, attachBookFile } = useApp();
   const [activeBook, setActiveBook] = useState<UserBook>(book);
 
-  // Auto-restore fresh blob object URL from IndexedDB on mount
-  useEffect(() => {
-    let isMounted = true;
-    async function restoreBookFile() {
-      const idbFile = await getBookFileFromIDB(book.id);
-      if (idbFile && isMounted) {
-        setActiveBook(prev => ({
-          ...prev,
-          fileStorageUrl: idbFile.objectUrl,
-          fileName: idbFile.fileName,
-          fileType: idbFile.fileType
-        }));
-      }
-    }
-    restoreBookFile();
-    return () => { isMounted = false; };
-  }, [book.id]);
+  const [currentPage, setCurrentPage] = useState(() => Math.max(1, book.currentPage));
+  const [totalPages, setTotalPages] = useState(() => Math.max(book.totalPages || 1, book.currentPage));
 
-  // Initialize page to the saved page progress (restores exactly where user left off)
-  const getInitialPage = () => {
-    try {
-      const stored = localStorage.getItem(`dk_last_page_${book.id}`);
-      if (stored) {
-        const p = parseInt(stored, 10);
-        if (!isNaN(p) && p > 0) return p;
-      }
-    } catch {}
-    return book.currentPage && book.currentPage > 0 ? book.currentPage : 1;
-  };
-
-  const [currentPage, setCurrentPage] = useState<number>(getInitialPage);
-  
-  // Sync page when switching to a different book
-  useEffect(() => {
-    setCurrentPage(getInitialPage());
-  }, [book.id]);
-
-  const [totalPages, setTotalPages] = useState<number>(() => Math.max(book.totalPages || 100, getInitialPage()));
-  
   // PDF Zoom level & Dimensions
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [pdfDimensions, setPdfDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -91,11 +54,18 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
   const [selectedText, setSelectedText] = useState<string>('');
   const [quoteNote, setQuoteNote] = useState<string>('');
   const [showQuoteModal, setShowQuoteModal] = useState<boolean>(false);
-  const [bookmarks, setBookmarks] = useState<number[]>([]);
+  const [bookmarks, setBookmarks] = useState<number[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`dk_reader_bookmarks_${book.id}`) || '[]');
+      if (Array.isArray(saved)) return saved.filter(page => Number.isInteger(page) && page >= 1);
+    } catch {}
+    return [];
+  });
   const [showToc, setShowToc] = useState<boolean>(false);
   const [showThemeMenu, setShowThemeMenu] = useState<boolean>(false);
   const [copiedSuccess, setCopiedSuccess] = useState<boolean>(false);
   const [isUploadingPdf, setIsUploadingPdf] = useState<boolean>(false);
+  const [fileError, setFileError] = useState<string>();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
@@ -136,42 +106,28 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
     setShowThemeMenu(false);
   };
 
-  // Sync page change back to parent and storage instantly
-  useEffect(() => {
-    try {
-      localStorage.setItem(`dk_last_page_${activeBook.id}`, String(currentPage));
-    } catch {}
-    onUpdatePage(activeBook.id, currentPage);
-  }, [currentPage, activeBook.id]);
+  const goToPage = useCallback((page: number) => {
+    if (page < 1 || page > totalPages || page === currentPage) return;
+    setCurrentPage(page);
+    setSelectedText('');
+    onUpdatePage(activeBook.id, page);
+  }, [currentPage, totalPages, activeBook.id, onUpdatePage]);
 
   const handleClose = () => {
-    try {
-      localStorage.setItem(`dk_last_page_${activeBook.id}`, String(currentPage));
-    } catch {}
-    if (typeof document !== 'undefined' && document.fullscreenElement && document.exitFullscreen) {
-      document.exitFullscreen().catch(() => {});
-    }
-    onUpdatePage(activeBook.id, currentPage);
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
     onClose();
   };
 
-  const handleNextPage = useCallback(() => {
-    if (currentPage < totalPages) {
-      const next = currentPage + 1;
-      setCurrentPage(next);
-      try { localStorage.setItem(`dk_last_page_${activeBook.id}`, String(next)); } catch {}
-      onUpdatePage(activeBook.id, next);
-    }
-  }, [currentPage, totalPages, activeBook.id, onUpdatePage]);
+  const handleNextPage = useCallback(() => goToPage(currentPage + 1), [currentPage, goToPage]);
+  const handlePrevPage = useCallback(() => goToPage(currentPage - 1), [currentPage, goToPage]);
 
-  const handlePrevPage = useCallback(() => {
-    if (currentPage > 1) {
-      const prev = currentPage - 1;
-      setCurrentPage(prev);
-      try { localStorage.setItem(`dk_last_page_${activeBook.id}`, String(prev)); } catch {}
-      onUpdatePage(activeBook.id, prev);
-    }
-  }, [currentPage, activeBook.id, onUpdatePage]);
+  const handleFileLength = (total: number) => {
+    if (total < 1) return;
+    setTotalPages(total);
+    const page = Math.min(currentPage, total);
+    setCurrentPage(page);
+    if (total !== totalPages || page !== currentPage) onUpdatePage(activeBook.id, page, total);
+  };
 
   // Clean up any browser-level OS fullscreen on mount or close to prevent browser toast
   useEffect(() => {
@@ -330,19 +286,16 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
     const input = form.elements.namedItem('pageInput') as HTMLInputElement;
     const pageNum = parseInt(input.value, 10);
     if (!isNaN(pageNum) && pageNum >= 1) {
-      const target = Math.min(pageNum, totalPages);
-      setCurrentPage(target);
-      try { localStorage.setItem(`dk_last_page_${activeBook.id}`, String(target)); } catch {}
-      onUpdatePage(activeBook.id, target);
+      goToPage(Math.min(pageNum, totalPages));
     }
   };
 
   const toggleBookmark = () => {
-    if (bookmarks.includes(currentPage)) {
-      setBookmarks(bookmarks.filter(p => p !== currentPage));
-    } else {
-      setBookmarks([...bookmarks, currentPage].sort((a, b) => a - b));
-    }
+    const updated = bookmarks.includes(currentPage)
+      ? bookmarks.filter(page => page !== currentPage)
+      : [...bookmarks, currentPage].sort((a, b) => a - b);
+    setBookmarks(updated);
+    try { localStorage.setItem(`dk_reader_bookmarks_${activeBook.id}`, JSON.stringify(updated)); } catch {}
   };
 
   const handleTextSelection = () => {
@@ -374,9 +327,10 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     try {
+      setFileError(undefined);
       setIsUploadingPdf(true);
       const objectUrl = await attachBookFile(activeBook.id, file);
-      const fileType = file.name.endsWith('.epub') ? 'epub' : 'pdf';
+      const fileType = file.name.toLowerCase().endsWith('.epub') ? 'epub' : 'pdf';
       setActiveBook(prev => ({
         ...prev,
         fileStorageUrl: objectUrl,
@@ -384,16 +338,15 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
         fileType: fileType as 'pdf' | 'epub'
       }));
     } catch (err) {
-      console.error('File attach error:', err);
+      setFileError('Dosya kaydedilemedi. Geçerli bir PDF veya EPUB dosyası seçip tekrar dene.');
     } finally {
       setIsUploadingPdf(false);
+      e.target.value = '';
     }
   };
 
-  const mockChapters = Array.from({ length: Math.min(12, Math.ceil(totalPages / 25)) }).map((_, i) => ({
-    title: `Bölüm ${i + 1}: ${i === 0 ? 'Giriş ve Başlangıç' : i === 1 ? 'Temel Kavramlar' : `Tefekkür ve İncelemeler ${i + 1}`}`,
-    page: Math.min(totalPages, i * 25 + 1)
-  }));
+  const jumpStep = Math.max(25, Math.ceil(totalPages / 100));
+  const quickPages = Array.from({ length: Math.ceil(totalPages / jumpStep) }, (_, index) => index * jumpStep + 1);
 
   const getThemeClasses = () => {
     switch (readerTheme) {
@@ -622,7 +575,7 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
             <button 
               onClick={() => setShowToc(!showToc)}
               className="p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-              title="İçindekiler Bölümü"
+              title="Hızlı sayfa geçişi"
             >
               <BookOpen className="w-4 h-4" />
             </button>
@@ -641,31 +594,25 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
         </button>
       )}
 
+      {fileError && <p role="alert" className="bg-rose-100 p-2 text-sm text-rose-900">{fileError}</p>}
+
       {/* Main Reading View Area */}
       <div className="flex-1 overflow-hidden relative flex">
         {/* Table of Contents Drawer */}
         {showToc && (
           <div className="w-72 border-r border-black/10 dark:border-white/10 bg-white/90 dark:bg-black/90 backdrop-blur-md p-4 overflow-y-auto z-30 animate-in slide-in-from-left duration-200">
             <h4 className="font-serif-title font-bold text-lg mb-3 flex items-center justify-between">
-              <span>İçindekiler</span>
+              <span>Hızlı sayfa geçişi</span>
               <button onClick={() => setShowToc(false)} className="text-xs opacity-60 hover:opacity-100 font-bold">Kapat</button>
             </h4>
             <div className="space-y-1">
-              {mockChapters.map((chap, idx) => (
+              {quickPages.map(page => (
                 <button
-                  key={idx}
-                  onClick={() => {
-                    setCurrentPage(chap.page);
-                    setShowToc(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between transition-colors ${
-                    currentPage >= chap.page && (idx === mockChapters.length - 1 || currentPage < mockChapters[idx + 1].page)
-                      ? 'bg-[#742C3C] text-white font-medium'
-                      : 'hover:bg-black/5 dark:hover:bg-white/10'
-                  }`}
+                  key={page}
+                  onClick={() => { goToPage(page); setShowToc(false); }}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-black/5 dark:hover:bg-white/10"
                 >
-                  <span className="truncate pr-2">{chap.title}</span>
-                  <span className="text-xs opacity-70 shrink-0">s. {chap.page}</span>
+                  Sayfa {page}
                 </button>
               ))}
             </div>
@@ -712,11 +659,7 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
                 onDoubleClick={handleReaderDoubleClick}
                 isFullScreenMode={isFullscreen || isZenMode}
                 onToggleFullScreen={toggleFullscreenReadingMode}
-                onTotalPagesLoaded={(total) => {
-                  if (total && total !== totalPages) {
-                    setTotalPages(total);
-                  }
-                }}
+                onTotalPagesLoaded={handleFileLength}
               />
             </div>
           ) : activeBook.fileStorageUrl && activeBook.fileType === 'epub' ? (
@@ -731,11 +674,7 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
                 fontSize={fontSize}
                 lineHeight={lineHeight}
                 title={activeBook.title}
-                onTotalChaptersLoaded={(total) => {
-                  if (total && total !== totalPages) {
-                    setTotalPages(total);
-                  }
-                }}
+                onTotalChaptersLoaded={handleFileLength}
               />
             </div>
           ) : (
@@ -760,37 +699,16 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
                   <span>Sayfa {currentPage} / {totalPages}</span>
                 </div>
 
-                {/* Book Body Text Content */}
-                <div className="flex-1 text-justify font-sans tracking-normal space-y-4 leading-relaxed">
-                  <h2 className="font-serif-title font-bold text-2xl md:text-3xl text-center mb-6 text-[#742C3C] dark:text-[#B79A63]">
-                    {currentPage === 1 ? activeBook.title : `Bölüm ${Math.ceil(currentPage / 25)}: Hikmet ve Tefekkür`}
-                  </h2>
-
-                  <p className="first-letter:text-4xl first-letter:font-serif-title first-letter:font-bold first-letter:float-left first-letter:mr-2 first-letter:text-[#742C3C] dark:first-letter:text-[#B79A63]">
-                    İlim ve hakikat yolculuğu, zihnin derinliklerinde başlayan sessiz bir tefekkür ile tecellî eder. Her sahife, hakikate açılan mütevazı bir kapı ve insan ruhunu zenginleştiren kutlu bir adımdır. Yıllar boyunca biriken bu birikim, okuyucunun sadece bilgisini değil, ahlakını ve ufkunu da yükseltir.
-                  </p>
-
-                  <p>
-                    Okuma eylemi pasif bir takip değildir; müellif ile okur arasında kurulan zamansız bir diyalogdur. Okuduğumuz her satırda kendi zihin dünyamızın aynasıyla karşılaşır, geçmişin birikimini geleceğin idrakine taşırız.
-                  </p>
-
-                  <div className="my-6 p-4 rounded-xl bg-black/5 dark:bg-white/5 border-l-4 border-[#742C3C] dark:border-[#B79A63] font-serif-title italic text-base">
-                    "Bir kitabı okurken altını çizdiğin her cümle, aslında kendi ruhunun o andaki hizasını gösterir."
-                  </div>
-
-                  <p>
-                    {currentPage % 2 === 0 
-                      ? "İnsan hafızası unutmaya meyillidir; fakat kütüphaneler ve kayda geçirilen hikmetler zamanın yıpratıcı tesirine karşı direnir. Dijital Kütüphanem ile bu okuma hayatı kalıcı bir bilgi hazinesine dönüştürülür."
-                      : "Derinlemesine okuma, yüzeysel bilgi turlarının aksine sabır ve dikkati gerektirir. Günde 40 sayfalık kararlı bir tempo, yılda onlarca cildin ve binlerce sayfanın fethini mümkün kılar."}
-                  </p>
-
+                <div className="flex-1 space-y-4">
+                  <h2 className="font-serif-title font-bold text-2xl text-[#742C3C] dark:text-[#B79A63]">{activeBook.title}</h2>
+                  <p className="text-sm">Bu kitaba bir dijital dosya eklenmemiş. Basılı kitaptan okuyorsan sayfa numaranı yukarıdaki alandan kaydedebilirsin.</p>
                   {/* One-Click Attach PDF Banner */}
                   <div className="mt-8 p-4 rounded-2xl bg-[#742C3C]/10 dark:bg-amber-400/10 border border-[#742C3C]/20 dark:border-amber-400/20 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-2">
                       <FileText className="w-5 h-5 text-[#742C3C] dark:text-[#B79A63] shrink-0" />
                       <div>
-                        <p className="font-bold text-slate-900 dark:text-slate-100">Bu esere ait orijinal PDF dosyanız var mı?</p>
-                        <p className="opacity-70">PDF dosyanızı ekleyerek orijinal sayfaları tam ekran ve gece modunda okuyabilirsiniz.</p>
+                        <p className="font-bold text-slate-900 dark:text-slate-100">Bu kitaba PDF veya EPUB ekle</p>
+                        <p className="opacity-70">Dosya bu cihazda saklanır ve okuyucuda açılır.</p>
                       </div>
                     </div>
                     <button
@@ -799,7 +717,7 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
                       className="px-4 py-2 rounded-xl bg-[#742C3C] text-white hover:bg-[#5a222f] font-bold shrink-0 flex items-center gap-1.5 shadow-md active:scale-95"
                     >
                       <UploadCloud className="w-4 h-4" />
-                      <span>{isUploadingPdf ? 'Yükleniyor...' : 'PDF Dosyası Ekle'}</span>
+                      <span>{isUploadingPdf ? 'Yükleniyor...' : 'PDF / EPUB Ekle'}</span>
                     </button>
                   </div>
                 </div>

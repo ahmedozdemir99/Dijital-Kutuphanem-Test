@@ -1,3 +1,5 @@
+import { getCurriculumProgress } from '../data/readingPlanData';
+import { readingDate } from '../utils/readingDate';
 import React, { useState } from 'react';
 import { Quote, Flame, BookOpen, GraduationCap, RefreshCw, ExternalLink, Sparkles } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -20,7 +22,7 @@ export const StandaloneWidgetView: React.FC = () => {
   };
 
   // Metric 1: Book Reading Today
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = readingDate();
   const todaySessions = readingSessions.filter(s => s.date === todayStr);
   const totalPagesToday = todaySessions.reduce((acc, curr) => acc + curr.pagesRead, 0);
   const targetPages = userProfile.dailyTargetPages || 40;
@@ -30,13 +32,8 @@ export const StandaloneWidgetView: React.FC = () => {
   const completedJuzCount = quranProgress.completedJuzs?.length || 0;
   const hatimPercentage = Math.round((completedJuzCount / 30) * 100);
   const quranPage = quranProgress.lastReadPage || 1;
-  const currentHizb = Math.ceil(quranPage / 10);
-
-  // Metric 3: 40-Year Curriculum Progress
-  const completedBooks = userBooks.filter(b => b.status === 'completed').length;
-  const totalCurriculumGoal = 1024;
-  const curriculumPercentage = (completedBooks / totalCurriculumGoal) * 100;
-  const formattedCurriculumPercent = curriculumPercentage < 1 ? curriculumPercentage.toFixed(1) : Math.round(curriculumPercentage);
+  const { completedBooks, totalBooks: totalCurriculumGoal, percent: curriculumPercentage } = getCurriculumProgress(userBooks);
+  const formattedCurriculumPercent = Number(curriculumPercentage.toFixed(1));
 
   const typeLabels: Record<DailyWisdom['type'], string> = {
     'Hadis-i Şerif': 'Günün Hadis-i Şerifi',
@@ -141,7 +138,7 @@ export const StandaloneWidgetView: React.FC = () => {
 
           <div className="text-[9px] text-slate-300">
             <strong className="text-white text-xs">{quranProgress.pagesReadToday || 0}</strong> / 1 Hizb
-            <span className="block text-[8px] text-emerald-400/90">{currentHizb}. Hizb (Syf {quranPage}/604)</span>
+            <span className="block text-[8px] text-emerald-400/90">Sayfa {quranPage} (Syf {quranPage}/604)</span>
           </div>
         </div>
 
@@ -162,7 +159,7 @@ export const StandaloneWidgetView: React.FC = () => {
 
           <div className="text-[9px] text-slate-300">
             <strong className="text-white text-xs">{completedBooks}</strong> Eser
-            <span className="block text-[8px] text-slate-400">1024 Katalog</span>
+            <span className="block text-[8px] text-slate-400">{totalCurriculumGoal} öneri</span>
           </div>
         </div>
       </div>

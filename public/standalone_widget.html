@@ -1,85 +1,10 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Dijital Kütüphanem — Canlı Widget</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
-    body { background-color: #18050B; color: #ffffff; padding: 12px; height: 100vh; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; user-select: none; border: 3px solid rgba(183, 154, 99, 0.4); border-radius: 20px; }
-    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(183, 154, 99, 0.3); padding-bottom: 6px; }
-    .brand { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #B79A63; display: flex; items-center; gap: 6px; }
-    .badge { background: rgba(183, 154, 99, 0.2); color: #B79A63; font-size: 9px; padding: 2px 8px; border-radius: 12px; font-weight: bold; border: 1px solid rgba(183, 154, 99, 0.3); }
-    .wisdom-card { background: linear-gradient(135deg, rgba(0,0,0,0.5), rgba(44,12,22,0.8), rgba(0,0,0,0.5)); border: 1px solid rgba(183, 154, 99, 0.3); border-radius: 14px; padding: 10px; margin: 8px 0; }
-    .wisdom-title { font-size: 9px; font-weight: 800; color: #B79A63; text-transform: uppercase; margin-bottom: 4px; display: flex; justify-content: space-between; }
-    .wisdom-text { font-size: 11px; font-style: italic; color: #f3f3f3; line-height: 1.3; }
-    .wisdom-author { font-size: 9px; text-align: right; color: #B79A63; margin-top: 4px; font-weight: 600; }
-    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-    .metric-card { background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px; padding: 8px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: space-between; }
-    .metric-title { font-size: 9px; font-weight: 800; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 4px; }
-    .circle { width: 44px; height: 44px; border-radius: 50%; border: 3px solid #B79A63; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); margin: 4px 0; }
-    .circle.green { border-color: #10B981; }
-    .circle.gold { border-color: #F59E0B; }
-    .percent { font-size: 10px; font-weight: 900; line-height: 1; }
-    .percent-sub { font-size: 6px; opacity: 0.7; font-weight: 700; }
-    .subtext { font-size: 8px; opacity: 0.8; margin-top: 2px; }
-  </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="0; url=/?widget=true">
+  <title>Dijital Kütüphanem Widget</title>
 </head>
-<body>
-  <div class="header">
-    <div class="brand">📖 DİJİTAL KÜTÜPHANEM</div>
-    <div class="badge">✨ Canlı Takip</div>
-  </div>
-
-  <div class="wisdom-card">
-    <div class="wisdom-title">
-      <span>💬 Günün Hikmetli Sözü</span>
-      <span id="date-str"></span>
-    </div>
-    <p class="wisdom-text" id="wisdom-text">"Güzel gören güzel düşünür, güzel düşünen hayatından lezzet alır."</p>
-    <div class="wisdom-author" id="wisdom-author">— Bediüzzaman Said Nursî</div>
-  </div>
-
-  <div class="grid">
-    <div class="metric-card">
-      <div class="metric-title" style="color: #F43F5E;">📖 1. KİTAP</div>
-      <div class="circle">
-        <span class="percent" style="color: #B79A63;">%83</span>
-        <span class="percent-sub">TAMAM</span>
-      </div>
-      <div class="subtext"><b>33</b> / 40 syf</div>
-    </div>
-
-    <div class="metric-card" style="border-color: rgba(16, 185, 129, 0.2);">
-      <div class="metric-title" style="color: #34D399;">🌙 2. KUR'AN</div>
-      <div class="circle green">
-        <span class="percent" style="color: #34D399;">%23</span>
-        <span class="percent-sub">HATİM</span>
-      </div>
-      <div class="subtext" style="color: #34D399;">14. Hizb</div>
-    </div>
-
-    <div class="metric-card">
-      <div class="metric-title" style="color: #FBBF24;">📜 3. İLİM</div>
-      <div class="circle gold">
-        <span class="percent" style="color: #FBBF24;">%0.3</span>
-        <span class="percent-sub">40 YIL</span>
-      </div>
-      <div class="subtext"><b>6</b> Eser</div>
-    </div>
-  </div>
-
-  <script>
-    document.getElementById('date-str').innerText = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
-    const wisdoms = [
-      { text: "Güzel gören güzel düşünür, güzel düşünen hayatından lezzet alır.", source: "Bediüzzaman Said Nursî" },
-      { text: "Saat, zamanın kendisi değil, onun ölçüsüdür.", source: "Ahmet Hamdi Tanpınar" },
-      { text: "Sonsuzluk kervanı, peşinizde ben varım!", source: "Necip Fazıl Kısakürek" },
-      { text: "Dünyada tek başarılı insan vardır: Kendini keşfeden insan.", source: "Cemil Meriç" }
-    ];
-    const todayW = wisdoms[new Date().getDate() % wisdoms.length];
-    document.getElementById('wisdom-text').innerText = '"' + todayW.text + '"';
-    document.getElementById('wisdom-author').innerText = '— ' + todayW.source;
-  </script>
-</body>
+<body><a href="/?widget=true">Dijital Kütüphanem Widget’ı aç</a></body>
 </html>

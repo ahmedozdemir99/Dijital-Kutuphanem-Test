@@ -1,88 +1,19 @@
-import React, { useState } from 'react';
+import { readingDate } from '../utils/readingDate';
+import React from 'react';
 import { BookOpen, Compass, Sparkles, BookMarked, ExternalLink } from 'lucide-react';
-import { UserBook, UserProfile, ReadingSession, QuranProgress } from '../types';
+import { useApp } from '../context/AppContext';
+import { getCurriculumProgress } from '../data/readingPlanData';
 
 export const WidgetView: React.FC = () => {
-  // 1. Reading Profile & Today's Target
-  const [profile] = useState<UserProfile>(() => {
-    try {
-      const saved = localStorage.getItem('dk_user_profile');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return {
-      displayName: 'Okur',
-      email: '',
-      dailyTargetPages: 40,
-      singleVolumeTargetPages: 20,
-      multiVolumeTargetPages: 20,
-      autoBackupEnabled: true,
-      theme: 'dark',
-      joinedDate: '2026-01-01',
-      reminderEnabled: true,
-      reminderTimes: ['08:30', '14:00', '21:30'],
-      reminderSound: true
-    };
-  });
-
-  // 2. Books & Reading Sessions (Today's Reading Progress)
-  const [userBooks] = useState<UserBook[]>(() => {
-    try {
-      const saved = localStorage.getItem('dk_user_books');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [];
-  });
-
-  const [todayPagesRead] = useState<number>(() => {
-    try {
-      const savedSessions = localStorage.getItem('dk_reading_sessions');
-      if (savedSessions) {
-        const sessions: ReadingSession[] = JSON.parse(savedSessions);
-        const todayStr = new Date().toISOString().split('T')[0];
-        const sum = sessions
-          .filter(s => s.date === todayStr)
-          .reduce((total, s) => total + s.pagesRead, 0);
-        if (sum > 0) return sum;
-      }
-    } catch {}
-    return 33;
-  });
-
-  // 3. Quran Reading & Hatim Progress
-  const [quranProg] = useState<QuranProgress>(() => {
-    try {
-      const saved = localStorage.getItem('dk_quran_progress');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return {
-      lastReadSurah: 2,
-      lastReadAyah: 185,
-      lastReadPage: 140,
-      completedJuzs: [1, 2, 3, 4, 5, 6, 7],
-      pagesReadToday: 10,
-      versesReadToday: 25,
-      completedHatimCount: 1,
-      dailyHizbGoal: 1,
-      dailyPageGoal: 20,
-      readingCalendar: {},
-      bookmarkedAyahs: [],
-      favoriteAyahs: [],
-      ayahNotes: {}
-    };
-  });
-
-  // Calculate Metrics
-  const dailyTarget = profile.dailyTargetPages || 40;
-  const bookProgressPercent = Math.min(100, Math.round((todayPagesRead / dailyTarget) * 100));
-
-  const lastPage = quranProg.lastReadPage || 1;
-  const hatimPercent = Math.min(100, Math.round((lastPage / 604) * 100));
-  const currentHizb = Math.min(60, Math.max(1, Math.ceil(lastPage / 10.06)));
-  const dailyHizbGoal = quranProg.dailyHizbGoal || 1;
-
-  const completedBooksCount = userBooks.filter(b => b.status === 'completed').length || 6;
-  const curriculumTotalBooks = 1920;
-  const curriculumProgressPercent = Number(((completedBooksCount / curriculumTotalBooks) * 100).toFixed(1));
+  const { userProfile: profile, userBooks, readingSessions, quranProgress } = useApp();
+  const todayPagesRead = readingSessions.filter(session => session.date === readingDate()).reduce((total, session) => total + session.pagesRead, 0);
+  const dailyTarget = Math.max(1, profile.dailyTargetPages || 40);
+  const bookProgressPercent = Math.min(100, Math.round(todayPagesRead / dailyTarget * 100));
+  const lastPage = quranProgress.lastReadPage || 1;
+  const hatimPercent = Math.min(100, Math.round((quranProgress.completedJuzs?.length || 0) / 30 * 100));
+  const dailyHizbGoal = quranProgress.dailyHizbGoal || 1;
+  const { completedBooks: completedBooksCount, totalBooks: curriculumTotalBooks, percent } = getCurriculumProgress(userBooks);
+  const curriculumProgressPercent = Number(percent.toFixed(1));
 
   const navigateTo = (tab: string, sub?: string) => {
     const targetUrl = sub ? `/?tab=${tab}&sub=${sub}` : `/?tab=${tab}`;
@@ -301,7 +232,7 @@ export const WidgetView: React.FC = () => {
             {dailyHizbGoal} <span style={{ fontSize: '10px', color: '#FFEAA7', fontWeight: 500 }}>/ 1 Hizb</span>
           </div>
           <div style={{ fontSize: '9px', color: '#DFE6E9', marginTop: '2px' }}>
-            {currentHizb}. Hizb ({lastPage}/604)
+            Sayfa {lastPage}/604
           </div>
 
           <div 

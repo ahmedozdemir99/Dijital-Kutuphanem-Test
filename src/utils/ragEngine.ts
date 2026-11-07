@@ -15,6 +15,8 @@ export interface RAGSearchInput {
 
 export interface RAGSearchResult {
   summary: {
+    displayName: string;
+    dailyTargetPages: number;
     totalBooks: number;
     completedBooks: number;
     readingBooks: number;
@@ -31,6 +33,10 @@ export interface RAGSearchResult {
   densePromptContext: string;
 }
 
+function normalizeSearchText(text: string): string {
+  return text.toLocaleLowerCase('tr-TR').normalize('NFD').replace(/\p{M}/gu, '').replace(/ı/g, 'i');
+}
+
 const TURKISH_STOPWORDS = new Set([
   'bir', 'bu', 'şu', 'o', 've', 'ile', 'de', 'da', 'ki', 'mi', 'mu', 'mü', 'mı',
   'için', 'gibi', 'kadar', 'daha', 'çok', 'en', 'ne', 'nasıl', 'neden', 'niçin',
@@ -38,13 +44,12 @@ const TURKISH_STOPWORDS = new Set([
   'her', 'tüm', 'bütün', 'bana', 'sana', 'bunu', 'şunu', 'olan', 'olarak', 'şey',
   'bölüm', 'sayfa', 'kitap', 'eder', 'ediyor', 'yapar', 'yapıyor', 'hakkında', 'şimdi',
   'sürekli', 'tekrar'
-]);
+].map(normalizeSearchText));
 
-// Tokenize text for lightweight TF-IDF / keyword similarity matching
+// Fold Turkish spelling variants while keeping non-Latin letters, such as Arabic.
 function tokenize(text: string): string[] {
-  return (text || '')
-    .toLowerCase()
-    .replace(/[^\w\sğüşıöçĞÜŞİÖÇ]/g, ' ')
+  return normalizeSearchText(text)
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .filter(w => w.length > 2 && !TURKISH_STOPWORDS.has(w));
 }
@@ -73,7 +78,7 @@ export function buildVectorRAGContext(input: RAGSearchInput): RAGSearchResult {
     dailyTargetPages
   } = input;
 
-  const queryTokens = tokenize(query);
+  const queryTokens = [...new Set(tokenize(query))];
 
   // 1. High-level Summary & 12 Categories Breakdown
   const completedBooks = userBooks.filter(b => b.status === 'completed');
@@ -81,13 +86,13 @@ export function buildVectorRAGContext(input: RAGSearchInput): RAGSearchResult {
   const wantToReadBooks = userBooks.filter(b => b.status === 'want_to_read');
   const pausedBooks = userBooks.filter(b => b.status === 'paused');
 
-  const categoryStats: Record<string, number> = {};
+  const categoryStats: Record<string, number> = Object.create(null);
   userBooks.forEach(b => {
     const cat = b.category || 'Genel';
     categoryStats[cat] = (categoryStats[cat] || 0) + 1;
   });
 
-  const activeBooksInfo = readingBooks.map(
+  const activeBooksInfo = readingBooks.slice(0, 8).map(
     b => `"${b.title}" (${b.author}) - Sayfa: ${b.currentPage}/${b.totalPages} (%${Math.round((b.currentPage / Math.max(1, b.totalPages)) * 100)})`
   );
 
@@ -100,6 +105,8 @@ export function buildVectorRAGContext(input: RAGSearchInput): RAGSearchResult {
   );
 
   const summary = {
+    displayName,
+    dailyTargetPages,
     totalBooks: userBooks.length,
     completedBooks: completedBooks.length,
     readingBooks: readingBooks.length,
@@ -141,12 +148,23 @@ export function buildVectorRAGContext(input: RAGSearchInput): RAGSearchResult {
   }).sort((a, b) => b.score - a.score);
 
   // 6. Vector Search across 40-Year Curriculum
+  const requestedYearMatch = query.match(/\b([1-9]|[1-3][0-9]|40)\.\s*yıl/iu);
+  const requestedYear = requestedYearMatch ? Number(requestedYearMatch[1]) : /ilk yıl|birinci yıl/iu.test(query) ? 1 : undefined;
+  const requestedMonthMatch = query.match(/\b([1-9]|1[0-2])\.\s*ay/iu);
+  const requestedMonth = requestedMonthMatch ? Number(requestedMonthMatch[1]) : undefined;
+  const selectedMonths = requestedYear ? curriculum.find(year => year.yearNumber === requestedYear)?.months : undefined;
+  const selectedMonth = requestedMonth ? selectedMonths?.find(month => month.monthNumber === requestedMonth) : undefined;
+  const planFocus = selectedMonth?.weeklyBooks.length === 0
+    ? `Okuma planı: ${requestedYear}. yıl ${requestedMonth}. ay için yeni eser atanmadı. Tekrar veya kişisel seçim ayı.
+` : '';
   const curriculumItems: { yearNum: number; monthNum: number; bookTitle: string; author: string; category: string; description: string; score: number }[] = [];
   curriculum.forEach(y => {
+    if (requestedYear && y.yearNumber !== requestedYear) return;
     y.months.forEach(m => {
+      if (requestedMonth && m.monthNumber !== requestedMonth) return;
       m.weeklyBooks.forEach(wb => {
         const textContent = `${y.title} ${y.theme || ''} ${m.monthTitle} ${m.authorName} ${m.authorBio} ${wb.title} ${wb.author} ${wb.category} ${wb.description}`;
-        const score = calculateSimilarity(queryTokens, tokenize(textContent));
+        const score = Math.max(requestedYear ? 0.3 : 0, calculateSimilarity(queryTokens, tokenize(textContent)));
         curriculumItems.push({
           yearNum: y.yearNumber,
           monthNum: m.monthNumber,
@@ -186,19 +204,19 @@ export function buildVectorRAGContext(input: RAGSearchInput): RAGSearchResult {
   const matchingVocab = queryTokens.length > 0 ? scoredVocab.filter(item => item.score >= 0.25) : [];
 
   const topBooks = matchingBooks.slice(0, 5).map(item => 
-    `• [${item.book.status.toUpperCase()}] "${item.book.title}" (${item.book.author}) - Kategori: ${item.book.category}, İlerleme: Sayfa ${item.book.currentPage}/${item.book.totalPages}${item.book.userNotes ? `, Not: "${item.book.userNotes}"` : ''}`
+    `• [${item.book.status.toUpperCase()}] "${item.book.title}" (${item.book.author}) - Kategori: ${item.book.category}, İlerleme: Sayfa ${item.book.currentPage}/${item.book.totalPages}${item.book.userNotes ? `, Not: "${item.book.userNotes.slice(0, 600)}"` : ''}`
   );
 
   const topQuotes = matchingQuotes.slice(0, 4).map(item => 
-    `• "${item.quote.quoteText}" (${item.quote.bookTitle} - ${item.quote.author}${item.quote.pageNumber ? `, syf. ${item.quote.pageNumber}` : ''})${item.quote.userNote ? ` | Not: "${item.quote.userNote}"` : ''}`
+    `• "${(item.quote.quoteText || '').slice(0, 1000)}" (${item.quote.bookTitle} - ${item.quote.author}${item.quote.pageNumber ? `, syf. ${item.quote.pageNumber}` : ''})${item.quote.userNote ? ` | Not: "${item.quote.userNote.slice(0, 400)}"` : ''}`
   );
 
   const topReviews = matchingReviews.slice(0, 2).map(item => 
-    `• "${item.review.bookTitle}" İncelemesi (${item.review.rating}/5 yıldız): "${item.review.content}"`
+    `• "${item.review.bookTitle}" İncelemesi (${item.review.rating}/5 yıldız): "${(item.review.content || '').slice(0, 800)}"`
   );
 
   const topCurriculum = matchingCurriculum.slice(0, 4).map(item => 
-    `• ${item.yearNum}. Yıl ${item.monthNum}. Ay Müfredatı: "${item.bookTitle}" (${item.author}) - ${item.category} [${item.description}]`
+    `• ${item.yearNum}. Yıl ${item.monthNum}. Ay Müfredatı: "${item.bookTitle}" (${item.author}) - ${item.category} [${item.description?.slice(0, 400) || ''}]`
   );
 
   const topPoetry = matchingPoetry.slice(0, 3).map(item => 
@@ -215,16 +233,16 @@ export function buildVectorRAGContext(input: RAGSearchInput): RAGSearchResult {
 
   // Construct Dense RAG Prompt Context
   const densePromptContext = `
-=== OKUR PROFİLİ VE RAG VEKTÖR ARAMA ÖZETİ ===
+=== OKUR ARŞİVİ VE SORUYLA EŞLEŞEN KAYITLAR ===
 Okur Adı: ${displayName}
 Günlük Hedef: ${dailyTargetPages} sayfa
-Toplam Kütüphane: ${userBooks.length} eser | Okunmuş: ${completedBooks.length} | Halen Okunan: ${readingBooks.length} | Okunacak: ${wantToReadBooks.length}
+Toplam Kütüphane: ${userBooks.length} eser | Okunmuş: ${completedBooks.length} | Halen Okunan: ${readingBooks.length} | Okunacak: ${wantToReadBooks.length} | Yarıda: ${pausedBooks.length}
 12 Kategori Dağılımı: ${categoryBreakdownText || 'Henüz kategori verisi yok'}
-Şu An Okunan Eserler: ${activeBooksInfo.length > 0 ? activeBooksInfo.join('; ') : 'Henüz aktif kitap seçilmedi'}
+Şu An Okunan Eserlerden Örnekler: ${activeBooksInfo.length > 0 ? activeBooksInfo.join('; ') : 'Henüz aktif kitap seçilmedi'}
 Tamamlanan Eserlerden Bazıları: ${completedBooksInfo.length > 0 ? completedBooksInfo.join('; ') : 'Henüz tamamlanan eser yok'}
 Okuma Listesindeki Eserler (Okunacak): ${wantToReadInfo.length > 0 ? wantToReadInfo.join('; ') : 'Henüz okunacak listesi boş'}
 
---- SORGURUYLA EN İLGİLİ KÜTÜPHANE ESERLERİ ---
+--- SORGUYLA EN İLGİLİ KÜTÜPHANE ESERLERİ ---
 ${topBooks.length > 0 ? topBooks.join('\n') : 'İlgili eser bulunamadı.'}
 
 --- EN İLGİLİ ALINTI VE NOTLARINIZ ---
@@ -234,7 +252,7 @@ ${topQuotes.length > 0 ? topQuotes.join('\n') : 'İlgili alıntı bulunamadı.'}
 ${topReviews.length > 0 ? topReviews.join('\n') : 'İlgili inceleme bulunamadı.'}
 
 --- 40 YILLIK İLİM MÜFREDATINDAN EN İLGİLİ ESERLER ---
-${topCurriculum.length > 0 ? topCurriculum.join('\n') : 'İlgili müfredat adımı bulunamadı.'}
+${planFocus}${topCurriculum.length > 0 ? topCurriculum.join('\n') : 'İlgili müfredat adımı bulunamadı.'}
 
 --- İLGİLİ ŞİİR VE ŞAİR ARŞİVİ ---
 ${topPoetry.length > 0 ? topPoetry.join('\n') : 'İlgili şiir bulunamadı.'}

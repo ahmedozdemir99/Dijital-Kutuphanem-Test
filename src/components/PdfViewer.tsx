@@ -90,6 +90,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       try {
         setLoading(true);
         setError(null);
+        setPdfDoc(null);
+        setExtractedText('');
 
         if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
           pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl || `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;

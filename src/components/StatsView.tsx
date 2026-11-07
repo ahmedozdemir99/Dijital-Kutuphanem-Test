@@ -1,3 +1,4 @@
+import { readingDate } from '../utils/readingDate';
 import React, { useMemo } from 'react';
 import { 
   TrendingUp, BarChart3, PieChart, BookOpen, Award, Flame, Calendar, Sparkles, Clock, CheckCircle2, Layers 
@@ -21,7 +22,7 @@ export const StatsView: React.FC = () => {
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dStr = d.toISOString().split('T')[0];
+      const dStr = readingDate(d);
       const daySessions = readingSessions.filter(s => s.date === dStr);
       const pages = daySessions.reduce((acc, curr) => acc + curr.pagesRead, 0);
       days.push({
@@ -33,13 +34,29 @@ export const StatsView: React.FC = () => {
     return days;
   }, [readingSessions]);
 
+  const activeDays = last7DaysData.filter(day => day.pages > 0).length;
+  const authorCounts = new Map<string, number>();
+  const completionYears = new Map<string, number>();
+  for (const book of userBooks) {
+    if (book.status !== 'completed') continue;
+    if (book.author) authorCounts.set(book.author, (authorCounts.get(book.author) || 0) + 1);
+    const year = book.endDate?.match(/^\d{4}(?=-)/u)?.[0] || 'Tarih belirtilmedi';
+    completionYears.set(year, (completionYears.get(year) || 0) + 1);
+  }
+  const topAuthor = [...authorCounts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'tr'))[0];
+  const completionsByYear = [...completionYears].sort((a, b) => {
+    if (a[0] === 'Tarih belirtilmedi') return 1;
+    if (b[0] === 'Tarih belirtilmedi') return -1;
+    return Number(b[0]) - Number(a[0]);
+  });
+
   const maxWeeklyPages = Math.max(10, ...last7DaysData.map(d => d.pages));
   const totalWeekPages = last7DaysData.reduce((sum, d) => sum + d.pages, 0);
   const avgDailySpeed = Math.round(totalWeekPages / 7);
 
   // Genre / Category Breakdown
   const categoryStats = useMemo(() => {
-    const map: { [cat: string]: { count: number; pages: number } } = {};
+    const map: { [cat: string]: { count: number; pages: number } } = Object.create(null);
     userBooks.forEach(b => {
       const cat = b.category || 'Diğer';
       if (!map[cat]) {
@@ -103,16 +120,27 @@ export const StatsView: React.FC = () => {
 
         <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-5 shadow-sm border border-black/5 dark:border-white/5 space-y-1">
           <span className="text-xs text-slate-500 font-medium">Okuma İstikrarı</span>
-          <p className="text-2xl font-serif-title font-bold text-emerald-600 dark:text-emerald-400">Yüksek</p>
+          <p className="text-2xl font-serif-title font-bold text-emerald-600 dark:text-emerald-400">{activeDays} / 7 Gün</p>
           <p className="text-[11px] text-slate-400">Son 7 Günlük Performans</p>
         </div>
 
         <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-5 shadow-sm border border-black/5 dark:border-white/5 space-y-1">
           <span className="text-xs text-slate-500 font-medium">En Çok Okunan Yazar</span>
-          <p className="text-sm font-serif-title font-bold text-amber-600 dark:text-amber-400 mt-1 truncate">Ahmet Hamdi Tanpınar</p>
-          <p className="text-[11px] text-slate-400">Kütüphanede 3 Eser</p>
+          <p className="text-sm font-serif-title font-bold text-amber-600 dark:text-amber-400 mt-1 truncate">{topAuthor?.[0] || 'Henüz veri yok'}</p>
+          <p className="text-[11px] text-slate-400">{topAuthor ? `${topAuthor[1]} tamamlanan eser` : 'Tamamlanan kitaplardan hesaplanır'}</p>
         </div>
       </div>
+
+      <section className="space-y-3 rounded-3xl border border-black/5 bg-white p-5 dark:border-white/10 dark:bg-[#1E1E1E]">
+        <h2 className="font-serif-title font-bold">Yıllara göre tamamlanan kitaplar</h2>
+        {completionsByYear.length ? (
+          <ul className="divide-y divide-black/5 text-sm dark:divide-white/10">
+            {completionsByYear.map(([year, count]) => (
+              <li key={year} className="flex justify-between gap-2 py-2"><span>{year}</span><strong>{count} eser</strong></li>
+            ))}
+          </ul>
+        ) : <p className="text-sm text-slate-500">Henüz tamamlanan kitap kaydı yok.</p>}
+      </section>
 
       {/* Journey Summary */}
       <div className="bg-[#F8F5EF] dark:bg-[#141414] rounded-3xl p-6 border border-black/5 dark:border-white/5">
@@ -122,7 +150,7 @@ export const StatsView: React.FC = () => {
         </h3>
         <p className="text-xs md:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
           Kütüphanenizdeki {totalBooks} eserin {completedBooks} tanesini tamamlayarak önemli bir entelektüel mesafe katettiniz. 
-          En çok {categoryStats[0]?.category || 'Edebiyat'} alanına odaklandığınız görünüyor. 
+          {categoryStats[0]?.pages > 0 ? `En çok sayfa okunan alan ${categoryStats[0].category}.` : 'Kategori ilerlemesi için sayfa kaydı gerekiyor.'}
           Okuma disiplininizi korumaya devam ederek 40 yıllık planınızın hedeflerine adım adım yaklaşıyorsunuz.
         </p>
       </div>

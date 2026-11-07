@@ -7,6 +7,7 @@ interface BookCoverImageProps {
   author?: string;
   category?: string;
   className?: string;
+  loading?: 'eager' | 'lazy';
   isMultiVolume?: boolean;
   volumeNumber?: number;
   progressPercent?: number; // 0 to 100
@@ -31,16 +32,17 @@ export const BookCoverImage: React.FC<BookCoverImageProps> = ({
   author,
   category = 'Edebiyat',
   className = 'w-full h-full object-cover',
+  loading,
   isMultiVolume,
   volumeNumber,
   progressPercent = 0,
   isCompleted = false
 }) => {
-  const [hasError, setHasError] = useState(false);
+  const [failedSource, setFailedSource] = useState<string>();
 
   const colors = CATEGORY_COLORS[category] || CATEGORY_COLORS["Edebiyat"];
 
-  const coverContent = (!src || hasError) ? (
+  const coverContent = (!src || src === failedSource) ? (
     <div className={`w-full h-full bg-gradient-to-br ${colors.bg} p-3 flex flex-col justify-between relative overflow-hidden book-spine-effect select-none shadow-md ${className}`}>
       {/* Subtle Background Pattern */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white/10 to-transparent pointer-events-none" />
@@ -79,8 +81,10 @@ export const BookCoverImage: React.FC<BookCoverImageProps> = ({
     <img
       src={src}
       alt={alt || title}
-      onError={() => setHasError(true)}
+      onError={() => setFailedSource(src)}
       className={className}
+      loading={loading}
+      decoding={loading === 'lazy' ? 'async' : undefined}
       referrerPolicy="no-referrer"
     />
   );

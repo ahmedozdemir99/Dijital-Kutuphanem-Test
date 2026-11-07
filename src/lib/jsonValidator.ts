@@ -1,4 +1,4 @@
-import { BookReview, Quotation, ReadingSession, UserBook, UserProfile, VocabularyItem } from '../types';
+import { BookReview, Quotation, QuranProgress, ReadingSession, UserBook, UserProfile, VocabularyItem } from '../types';
 
 export interface BackupPayload {
   version?: string;
@@ -9,6 +9,7 @@ export interface BackupPayload {
   reviews?: BookReview[];
   quotations?: Quotation[];
   vocabulary?: VocabularyItem[];
+  quranProgress?: QuranProgress;
 }
 
 export interface ValidationResult {
@@ -53,33 +54,32 @@ export function validateBackupJSON(jsonString: string): ValidationResult {
     } else {
       summary.booksCount = data.userBooks.length;
       data.userBooks.forEach((b: any, index: number) => {
-        if (!b.title || typeof b.title !== 'string') {
+        if (!b || typeof b.title !== 'string' || !b.title.trim()) {
           errors.push(`Kitap #${index + 1}: Geçersiz veya eksik "title" başlığı.`);
         }
-        if (!b.author || typeof b.author !== 'string') {
+        if (!b || typeof b.author !== 'string' || !b.author.trim()) {
           errors.push(`Kitap #${index + 1}: Geçersiz veya eksik "author" yazarı.`);
         }
-        if (typeof b.totalPages !== 'number' || b.totalPages <= 0) {
-          warnings.push(`Kitap #${index + 1} (${b.title || 'İsimsiz'}): Sayfa sayısı varsayılan değere ayarlandı.`);
+        if (b && (!Number.isFinite(Number(b.totalPages)) || Number(b.totalPages) <= 0)) {
+          warnings.push(`Kitap #${index + 1} (${b.title || 'İsimsiz'}): Sayfa sayısı içe aktarımda düzenlenecek.`);
         }
       });
     }
 
-    // Check optional arrays
-    if (data.readingSessions && Array.isArray(data.readingSessions)) {
-      summary.sessionsCount = data.readingSessions.length;
-    }
-
-    if (data.reviews && Array.isArray(data.reviews)) {
-      summary.reviewsCount = data.reviews.length;
-    }
-
-    if (data.quotations && Array.isArray(data.quotations)) {
-      summary.quotesCount = data.quotations.length;
-    }
-
-    if (data.vocabulary && Array.isArray(data.vocabulary)) {
-      summary.wordsCount = data.vocabulary.length;
+    const archiveFields = [
+      ['readingSessions', 'sessionsCount', 'date'],
+      ['reviews', 'reviewsCount', 'content'],
+      ['quotations', 'quotesCount', 'quoteText'],
+      ['vocabulary', 'wordsCount', 'word'],
+    ] as const;
+    for (const [field, count, requiredText] of archiveFields) {
+      const items = data[field];
+      if (items == null) continue;
+      if (!Array.isArray(items) || items.some(item => !item || typeof item[requiredText] !== 'string')) {
+        errors.push(`Geçersiz arşiv kayıtları: ${field}.`);
+      } else {
+        summary[count] = items.length;
+      }
     }
 
     return {

@@ -218,6 +218,8 @@ export interface Ayah {
 }
 
 export interface QuranProgress {
+  updatedAt?: string;
+  markedMushafPages?: { date: string; pages: number[] };
   lastReadSurah: number; // 1..114
   lastReadAyah: number;
   lastReadPage: number; // 1..604

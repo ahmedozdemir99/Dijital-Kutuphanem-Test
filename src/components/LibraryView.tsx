@@ -485,7 +485,7 @@ export const LibraryView: React.FC = () => {
           <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 shadow-md border border-black/5 dark:border-white/5">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
               {filteredBooks.map(book => {
-                const bookProg = Math.round((book.currentPage / book.totalPages) * 100);
+                const bookProg = Math.round((book.currentPage / Math.max(1, book.totalPages)) * 100);
                 return (
                   <div 
                     key={book.id}
@@ -497,6 +497,7 @@ export const LibraryView: React.FC = () => {
                       <BookCoverImage 
                         src={book.coverUrl} 
                         alt={book.title}
+                        loading="lazy"
                         title={book.title}
                         author={book.author}
                         category={book.category}
@@ -579,7 +580,7 @@ export const LibraryView: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-black/5 dark:divide-white/5">
                 {filteredBooks.map(book => {
-                  const bookProg = Math.round((book.currentPage / book.totalPages) * 100);
+                  const bookProg = Math.round((book.currentPage / Math.max(1, book.totalPages)) * 100);
                   return (
                     <tr key={book.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                       <td className="px-4 py-3">
@@ -590,6 +591,8 @@ export const LibraryView: React.FC = () => {
                           <img 
                             src={book.coverUrl} 
                             alt={book.title} 
+                            loading="lazy"
+                            decoding="async"
                             className="w-9 h-12 rounded object-cover book-shadow shrink-0" 
                             referrerPolicy="no-referrer"
                           />

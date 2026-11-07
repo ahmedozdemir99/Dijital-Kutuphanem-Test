@@ -12,7 +12,8 @@ import { AVAILABLE_BADGES } from '../data/badgeData';
 
 import { playNotificationChime } from '../utils/audioUtils';
 import { 
-  subscribeToCloudPush, 
+  subscribeToCloudPush,
+  disableCloudPush,
   sendServerTestPush, 
   isRunningInIframe, 
   isAndroidWebView, 
@@ -35,6 +36,7 @@ export const ProfileView: React.FC = () => {
 
   const [openSection, setOpenSection] = useState<'info' | 'sync' | 'reminders'>('reminders');
   const [importStatusMessage, setImportStatusMessage] = useState<{ success: boolean; message: string; validation?: ValidationResult } | null>(null);
+  const [syncStatusMessage, setSyncStatusMessage] = useState<{ success: boolean; message: string } | null>(null);
   const [integrityResult, setIntegrityResult] = useState<ReturnType<typeof verifyDataIntegrity> | null>(null);
   const [isManualSyncing, setIsManualSyncing] = useState<boolean>(false);
   const [newReminderTime, setNewReminderTime] = useState<string>('12:00');
@@ -60,22 +62,18 @@ export const ProfileView: React.FC = () => {
 
   const handleToggleReminders = async () => {
     const nextState = !userProfile.reminderEnabled;
-    if (nextState) {
-      playNotificationChime();
-      const res = await subscribeToCloudPush(userProfile.reminderTimes || ['08:30', '14:00', '21:30']);
-      if (res.isWebView) {
-        setTestNotificationFeedback({ type: 'webview', message: res.message });
-      } else if (res.success) {
-        setTestNotificationFeedback({ type: 'success', message: res.message });
-        setTimeout(() => setTestNotificationFeedback(null), 8000);
+    try {
+      if (nextState) {
+        const result = await subscribeToCloudPush(userProfile.reminderTimes || ['08:30', '14:00', '21:30']);
+        setTestNotificationFeedback({ type: result.isWebView ? 'webview' : result.success ? 'success' : 'error', message: result.message });
+        if (!result.success) return;
       } else {
-        setTestNotificationFeedback({ type: 'error', message: res.message });
+        await disableCloudPush();
       }
+      setUserProfile(previous => ({ ...previous, reminderEnabled: nextState }));
+    } catch {
+      setTestNotificationFeedback({ type: 'error', message: 'Bildirim ayarı değiştirilemedi. Tekrar dene.' });
     }
-    setUserProfile(prev => ({
-      ...prev,
-      reminderEnabled: nextState
-    }));
   };
 
   const handleToggleSound = () => {
@@ -121,7 +119,7 @@ export const ProfileView: React.FC = () => {
     playNotificationChime();
 
     try {
-      const result = await sendServerTestPush(userProfile.reminderTimes || ['08:30', '14:00', '21:30']);
+      const result = await sendServerTestPush(userProfile.reminderEnabled ? userProfile.reminderTimes || ['08:30', '14:00', '21:30'] : []);
       if (result.isWebView) {
         setTestNotificationFeedback({ type: 'webview', message: result.message });
       } else if (result.success) {
@@ -150,38 +148,37 @@ export const ProfileView: React.FC = () => {
             email: user.email || prev.email,
             photoURL: user.photoURL || undefined
           }));
-          await syncAllDataToCloud();
         }
       }
     } catch (err) {
-      console.error("Auth error:", err);
+      setSyncStatusMessage({ success: false, message: err instanceof Error ? err.message : 'Google oturumu açılamadı.' });
     }
   };
 
   const handleManualSync = async () => {
     setIsManualSyncing(true);
     setSyncProgress(0);
-    setImportStatusMessage(null);
+    setSyncStatusMessage(null);
     try {
       const res = await syncAllDataToCloud((prog) => {
         setSyncProgress(prog);
       });
       setIsManualSyncing(false);
-      setImportStatusMessage({
+      setSyncStatusMessage({
         success: res.success,
         message: res.message
       });
       setTimeout(() => {
-        setImportStatusMessage(null);
+        setSyncStatusMessage(null);
       }, 8000);
     } catch (err: any) {
       setIsManualSyncing(false);
-      setImportStatusMessage({
+      setSyncStatusMessage({
         success: false,
         message: `Senkronizasyon hatası: ${err?.message || 'Bilinmeyen hata'}`
       });
       setTimeout(() => {
-        setImportStatusMessage(null);
+        setSyncStatusMessage(null);
       }, 8000);
     }
   };
@@ -629,22 +626,22 @@ export const ProfileView: React.FC = () => {
               )}
 
               {/* Immediate sync result feedback banner */}
-              {importStatusMessage && (
+              {syncStatusMessage && (
                 <div className={`mt-2 p-3 rounded-xl text-xs font-medium flex items-center justify-between gap-2 animate-in fade-in ${
-                  importStatusMessage.success 
+                  syncStatusMessage.success
                     ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30' 
                     : 'bg-rose-500/10 text-rose-800 dark:text-rose-300 border border-rose-500/30'
                 }`}>
                   <div className="flex items-center gap-2">
-                    {importStatusMessage.success ? (
+                    {syncStatusMessage.success ? (
                       <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
                     ) : (
                       <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                     )}
-                    <span>{importStatusMessage.message}</span>
+                    <span>{syncStatusMessage.message}</span>
                   </div>
                   <button 
-                    onClick={() => setImportStatusMessage(null)}
+                    onClick={() => setSyncStatusMessage(null)}
                     className="text-[10px] opacity-70 hover:opacity-100 font-bold px-1.5 py-0.5 rounded"
                   >
                     Kapat

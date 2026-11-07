@@ -1,19 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { 
   BookOpen, Play, Pause, Volume2, Bookmark, Star, Share2, 
   Search, ChevronLeft, ChevronRight, CheckCircle2, RotateCcw, 
   Settings, MessageSquare, Compass, Award, Calendar, ExternalLink, Sliders, Moon, Sun, Info, Layers,
   Minimize2, Maximize2, Eye, EyeOff
 } from 'lucide-react';
+import { readingDate } from '../utils/readingDate';
 import { useApp } from '../context/AppContext';
 import { ALL_SURAHS, JUZ_LIST, RECITERS, fetchSurahVerses, fetchPageVerses, getGlobalAyahNumber } from '../data/quranData';
 import { Ayah, Reciter, Surah } from '../types';
 
+const QuranPdfReader = lazy(() => import('./QuranPdfReader').then(module => ({ default: module.QuranPdfReader })));
+
 export const QuranSection: React.FC = () => {
-  const { quranProgress, updateQuranProgress, bookmarkAyah, toggleFavoriteAyah, saveAyahNote } = useApp();
+  const { quranProgress, updateQuranProgress, recordMushafPage, bookmarkAyah, toggleFavoriteAyah, saveAyahNote } = useApp();
 
   // Navigation state
-  const [activeTab, setActiveTab] = useState<'surahs' | 'juz' | 'mushaf' | 'favorites' | 'hatim'>('surahs');
+  const [activeTab, setActiveTab] = useState<'surahs' | 'juz' | 'mushaf' | 'favorites' | 'hatim' | 'pdf'>('surahs');
   const [selectedSurahNumber, setSelectedSurahNumber] = useState<number>(quranProgress.lastReadSurah || 1);
   const [mushafPage, setMushafPage] = useState<number>(quranProgress.lastReadPage || 1);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -28,6 +31,9 @@ export const QuranSection: React.FC = () => {
   const [mushafPageVerses, setMushafPageVerses] = useState<Ayah[]>([]);
   const [isLoadingVerses, setIsLoadingVerses] = useState<boolean>(true);
   const [isLoadingPage, setIsLoadingPage] = useState<boolean>(false);
+  const [verseError, setVerseError] = useState(false);
+  const [pageError, setPageError] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   // Audio Reciter Player state
   const [selectedReciter, setSelectedReciter] = useState<Reciter>(RECITERS[0]);
@@ -47,12 +53,15 @@ export const QuranSection: React.FC = () => {
 
   // Load verses when Surah changes
   useEffect(() => {
-    let isMounted = true;
+    if (activeTab !== 'surahs') return;
+    const controller = new AbortController();
     setIsLoadingVerses(true);
+    setVerseError(false);
+    setCurrentVerses([]);
     setPlayingAyahIndex(null);
 
-    fetchSurahVerses(selectedSurahNumber).then(verses => {
-      if (isMounted) {
+    fetchSurahVerses(selectedSurahNumber, controller.signal).then(verses => {
+      if (!controller.signal.aborted) {
         setCurrentVerses(verses);
         setIsLoadingVerses(false);
         
@@ -67,18 +76,25 @@ export const QuranSection: React.FC = () => {
           }
         }
       }
+    }).catch(() => {
+      if (controller.signal.aborted) return;
+      setVerseError(true);
+      setIsLoadingVerses(false);
     });
 
-    return () => { isMounted = false; };
-  }, [selectedSurahNumber]);
+    return () => controller.abort();
+  }, [activeTab, selectedSurahNumber, retry]);
 
   // Load verses when Mushaf Page changes
   useEffect(() => {
-    let isMounted = true;
+    if (activeTab !== 'mushaf') return;
+    const controller = new AbortController();
     setIsLoadingPage(true);
+    setPageError(false);
+    setMushafPageVerses([]);
 
-    fetchPageVerses(mushafPage).then(verses => {
-      if (isMounted) {
+    fetchPageVerses(mushafPage, controller.signal).then(verses => {
+      if (!controller.signal.aborted) {
         setMushafPageVerses(verses);
         setIsLoadingPage(false);
 
@@ -93,10 +109,14 @@ export const QuranSection: React.FC = () => {
           }
         }
       }
+    }).catch(() => {
+      if (controller.signal.aborted) return;
+      setPageError(true);
+      setIsLoadingPage(false);
     });
 
-    return () => { isMounted = false; };
-  }, [mushafPage]);
+    return () => controller.abort();
+  }, [activeTab, mushafPage, retry]);
 
   // Audio Playback handling
   const [isMushafAudioMode, setIsMushafAudioMode] = useState<boolean>(false);
@@ -234,9 +254,11 @@ export const QuranSection: React.FC = () => {
   };
 
   const handleCopyAyah = (ayah: Ayah) => {
-    const text = `"${ayah.translationTurkish}"\n(${ayah.surahName} Sûresi, ${ayah.number}. Âyet - Diyanet Kur'an Yolu Meali)`;
-    navigator.clipboard.writeText(text);
-    setShareFeedback(`Âyet panoya kopyalandı!`);
+    const text = `${ayah.textArabic}\n${ayah.translationTurkish}\n(${ayah.surahName}, ${ayah.number}. ayet)`;
+    navigator.clipboard.writeText(text).then(
+      () => setShareFeedback('Ayet panoya kopyalandı.'),
+      () => setShareFeedback('Panoya erişilemedi. Metni seçip elle kopyalayabilirsin.'),
+    );
     setTimeout(() => setShareFeedback(null), 2500);
   };
 
@@ -315,6 +337,12 @@ export const QuranSection: React.FC = () => {
           >
             <Layers className="w-3.5 h-3.5" />
             <span>Mushaf & Meal (604)</span>
+          </button>
+
+          <button type="button" onClick={() => setActiveTab('pdf')}
+            aria-pressed={activeTab === 'pdf'}
+            className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-bold ${activeTab === 'pdf' ? 'bg-[#044B35] text-white' : 'bg-[#044B35]/10 text-[#044B35] dark:text-[#D4AF37]'}`}>
+            <BookOpen className="h-4 w-4" /> Mushaf PDF
           </button>
 
           <button
@@ -506,6 +534,8 @@ export const QuranSection: React.FC = () => {
                 <div className="w-10 h-10 border-4 border-[#044B35] border-t-transparent rounded-full animate-spin mx-auto" />
                 <p className="text-xs font-semibold text-slate-500">Âyet-i kerimeler ve Diyanet meali yükleniyor...</p>
               </div>
+            ) : verseError ? (
+              <p role="alert" className="p-4 text-sm">Ayet metni alınamadı. <button type="button" className="underline" onClick={() => setRetry(value => value + 1)}>Yeniden dene</button></p>
             ) : (
               <div className="space-y-4">
                 {currentVerses.map((ayah, index) => {
@@ -623,6 +653,12 @@ export const QuranSection: React.FC = () => {
       )}
 
       {/* TAB 2: GERÇEK MUSHAF SAYFA GÖRÜNÜMÜ + DİYANET MEAL (1-604) */}
+      {activeTab === 'pdf' && (
+        <Suspense fallback={<p role="status" className="p-4">PDF okuyucu yükleniyor…</p>}>
+          <QuranPdfReader />
+        </Suspense>
+      )}
+
       {activeTab === 'mushaf' && (
         <div className="space-y-6">
           {/* Controls Bar */}
@@ -687,11 +723,11 @@ export const QuranSection: React.FC = () => {
 
             {/* Top Page Header Banner */}
             <div className="flex justify-between items-center text-xs font-bold text-[#044B35] dark:text-[#D4AF37] border-b-2 border-[#D4AF37]/30 pb-3">
-              <span>الجزء {Math.ceil(mushafPage / 20)} • Cüz {Math.ceil(mushafPage / 20)}</span>
+              <span>{mushafPageVerses[0]?.juzNumber ? `Cüz ${mushafPageVerses[0].juzNumber}` : ''}</span>
               <span className="font-serif-title text-base font-bold text-[#044B35] dark:text-[#D4AF37]">
                 القرآن الكريم — Sayfa {mushafPage}
               </span>
-              <span>الحزب {Math.ceil(mushafPage / 10)} • Hizb {Math.ceil(mushafPage / 10)}</span>
+              <span>{mushafPageVerses[0]?.hizbNumber ? `Hizb ${mushafPageVerses[0].hizbNumber}` : ''}</span>
             </div>
 
             {isLoadingPage ? (
@@ -699,9 +735,18 @@ export const QuranSection: React.FC = () => {
                 <div className="w-10 h-10 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin mx-auto" />
                 <p className="text-xs font-semibold text-slate-500">Mushaf sayfası hazırlanıyor...</p>
               </div>
+            ) : pageError ? (
+              <p role="alert" className="p-4 text-sm">Mushaf sayfası alınamadı. <button type="button" className="underline" onClick={() => setRetry(value => value + 1)}>Yeniden dene</button></p>
             ) : (
               <div className="space-y-6">
-                {/* Full 15-Line Arabic Mushaf Page Block */}
+                {mushafPageVerses.length > 0 && (
+                  <button type="button" className="rounded-lg bg-[#044B35] px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                    disabled={quranProgress.markedMushafPages?.date === readingDate() && quranProgress.markedMushafPages.pages.includes(mushafPage)}
+                    onClick={() => recordMushafPage(mushafPage)}>
+                    {quranProgress.markedMushafPages?.date === readingDate() && quranProgress.markedMushafPages.pages.includes(mushafPage) ? 'Bugün okundu' : 'Bu sayfayı okudum'}
+                  </button>
+                )}
+                {/* Arabic Mushaf page */}
                 <div className="p-6 bg-[#F4EFE6]/40 dark:bg-black/20 rounded-2xl border border-[#D4AF37]/20">
                   <p 
                     className="font-quran text-[#044B35] dark:text-[#D4AF37] text-right leading-[2.6] selection:bg-[#D4AF37] selection:text-slate-900"
@@ -716,7 +761,7 @@ export const QuranSection: React.FC = () => {
                   <div className="pt-4 border-t-2 border-[#D4AF37]/30 space-y-4">
                     <h4 className="font-serif-title font-bold text-lg text-[#044B35] dark:text-[#D4AF37] flex items-center gap-2">
                       <BookOpen className="w-5 h-5 text-[#D4AF37]" />
-                      <span>Diyanet Kur'an Yolu Sayfa Meali (Sayfa {mushafPage}):</span>
+                      <span>Diyanet Türkçe Meali (Sayfa {mushafPage}):</span>
                     </h4>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -984,7 +1029,7 @@ export const QuranSection: React.FC = () => {
                   Diyanet Kur'an Yolu Tefsiri Açıklaması:
                 </h4>
                 <p className="text-xs md:text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-serif-title">
-                  {activeTefsirAyah.tafsirTurkish}
+                  Bu bölümde Kur’an Yolu tefsir metni yer almıyor. Ayrıntılı tefsiri Diyanet’in Kur’an portalından okuyabilirsin.
                 </p>
               </div>
 

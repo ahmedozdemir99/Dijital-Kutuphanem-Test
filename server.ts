@@ -5,17 +5,29 @@ import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import webpush from 'web-push';
-import { askRobiBrain } from './src/utils/robiBrain.ts';
+import { generateRobiChat, getRobiSourceUrls, normalizeRobiMode } from './src/utils/robiChat.ts';
 
-// WebPush VAPID Setup for Background Notifications (delivers even when app is closed)
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BB91Tt47oG2rr99hCjR0-nSCVHnDio1XzwIvZqd5bem2W6lQndUzw-uvYVH3pdClkjKwcdVyjNcTv6bV3EOIUnQ';
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'YYzK4YS7qFTurd6jZdFy49QNznecyzOduk7YeXlAIhs';
-const VAPID_EMAIL = 'mailto:ahmedkadiri99@gmail.com';
+const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+const vapidSubject = process.env.VAPID_SUBJECT;
+let pushConfigured = false;
+if (vapidPublicKey && vapidPrivateKey && vapidSubject) {
+  try {
+    webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    pushConfigured = true;
+  } catch {
+    console.warn('Bildirim anahtarları doğrulanamadı.');
+  }
+}
 
-try {
-  webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-} catch (vapidErr) {
-  console.warn('VAPID setup warning:', vapidErr);
+function isBrowserPushEndpoint(endpoint: unknown): endpoint is string {
+  if (typeof endpoint !== 'string' || endpoint.length > 2048 || !URL.canParse(endpoint)) return false;
+  const url = new URL(endpoint);
+  const host = url.hostname;
+  return url.protocol === 'https:' && !url.username && !url.password && !url.port &&
+    (host === 'fcm.googleapis.com' || host === 'android.googleapis.com' ||
+      host.endsWith('.push.services.mozilla.com') || host === 'web.push.apple.com' ||
+      host.endsWith('.notify.windows.com'));
 }
 
 // Subscriptions storage file
@@ -25,6 +37,7 @@ interface StoredPushSub {
   endpoint: string;
   subscription: webpush.PushSubscription;
   reminderTimes: string[];
+  timeZone?: string;
   lastNotifiedSlot?: string;
   updatedAt: string;
 }
@@ -35,7 +48,9 @@ function loadPushSubscriptions() {
   try {
     if (fs.existsSync(SUBSCRIPTIONS_FILE)) {
       const data = fs.readFileSync(SUBSCRIPTIONS_FILE, 'utf-8');
-      pushSubscriptions = JSON.parse(data);
+      const records: StoredPushSub[] = JSON.parse(data);
+      pushSubscriptions = Array.isArray(records) ? records.filter(item =>
+        isBrowserPushEndpoint(item?.endpoint) && item.subscription?.endpoint === item.endpoint) : [];
     }
   } catch (err) {
     pushSubscriptions = [];
@@ -47,6 +62,7 @@ function savePushSubscriptions() {
     fs.writeFileSync(SUBSCRIPTIONS_FILE, JSON.stringify(pushSubscriptions, null, 2), 'utf-8');
   } catch (err) {
     console.warn('Push subscriptions write error:', err);
+    return false;
   }
 }
 
@@ -74,132 +90,70 @@ async function startServer() {
     res.json({ status: 'ok', hasApiKey: !!(process.env.GEMINI_API_KEY || '') });
   });
 
-  app.get('/api/test-gemini', async (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    const key = process.env.GEMINI_API_KEY || '';
-    const ai = getGenAI();
-    const results: any[] = [];
-    for (const m of ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.1-flash-lite']) {
-      try {
-        const r = await ai.models.generateContent({ model: m, contents: 'Merhaba, bana 1 cümle ile Gazaliyi anlat.' });
-        results.push({ model: m, status: 'ok', text: r.text });
-      } catch (err: any) {
-        results.push({ model: m, status: 'error', code: err?.status, message: err?.message });
-      }
-    }
-    res.json({ keyLength: key.length, results });
-  });
-
-  // VAPID Public Key endpoint for client subscription
   app.get('/api/push-public-key', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.json({ publicKey: VAPID_PUBLIC_KEY });
+    if (!pushConfigured) return res.status(503).json({ error: 'Bildirim servisi yapılandırılmamış.' });
+    res.json({ publicKey: vapidPublicKey });
   });
 
-  // Save/Update Web Push Subscription with preferred reminder times and user timezone
   app.post('/api/save-subscription', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    const { subscription, reminderTimes, timeZone } = req.body;
-    if (!subscription || !subscription.endpoint) {
-      return res.status(400).json({ error: 'Geçersiz abonelik bilgisi.' });
+    if (!pushConfigured) return res.status(503).json({ error: 'Bildirim servisi yapılandırılmamış.' });
+    const { subscription, reminderTimes, timeZone } = req.body ?? {};
+    const endpoint = subscription?.endpoint;
+    const keys = subscription?.keys;
+    if (!isBrowserPushEndpoint(endpoint) || !keys ||
+      typeof keys.p256dh !== 'string' || keys.p256dh.length > 256 ||
+      typeof keys.auth !== 'string' || keys.auth.length > 128) {
+      return res.status(400).json({ error: 'Geçersiz bildirim aboneliği.' });
     }
-
-    const existingIndex = pushSubscriptions.findIndex(s => s.endpoint.trim() === subscription.endpoint.trim());
-    const validTimes = Array.isArray(reminderTimes) && reminderTimes.length > 0 
-      ? reminderTimes 
-      : ['08:30', '14:00', '21:30'];
-
-    const updatedRecord: StoredPushSub = {
-      endpoint: subscription.endpoint.trim(),
-      subscription,
-      reminderTimes: validTimes,
-      updatedAt: new Date().toISOString()
-    };
-
-    if (existingIndex >= 0) {
-      pushSubscriptions[existingIndex] = {
-        ...pushSubscriptions[existingIndex],
-        ...updatedRecord
-      };
-    } else {
-      pushSubscriptions.push(updatedRecord);
+    const times = Array.isArray(reminderTimes)
+      ? [...new Set<string>(reminderTimes.filter((time: unknown) => typeof time === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)))].slice(0, 24)
+      : [];
+    let zone = 'Europe/Istanbul';
+    if (typeof timeZone === 'string' && timeZone.length <= 100) {
+      try { zone = new Intl.DateTimeFormat('en', { timeZone }).resolvedOptions().timeZone; } catch {}
     }
-
-    savePushSubscriptions();
-    console.log(`[Push Subscription Saved] Total registered devices: ${pushSubscriptions.length}, Reminder times:`, validTimes);
-    res.json({ success: true, totalSubscribers: pushSubscriptions.length });
+    const previous = pushSubscriptions;
+    const existing = previous.find(item => item.endpoint === endpoint);
+    pushSubscriptions = [...previous.filter(item => item.endpoint !== endpoint), {
+      endpoint,
+      subscription: { endpoint, keys },
+      reminderTimes: times,
+      timeZone: zone,
+      lastNotifiedSlot: existing?.lastNotifiedSlot,
+      updatedAt: new Date().toISOString(),
+    }];
+    if (!savePushSubscriptions()) {
+      pushSubscriptions = previous;
+      return res.status(503).json({ error: 'Abonelik kaydedilemedi.' });
+    }
+    res.json({ success: true });
   });
 
-  // Immediate Test Push Notification from Server to Device (Delivers even when app is closed)
   app.post('/api/send-test-push', async (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    const { subscription } = req.body;
-    const targetSubs: webpush.PushSubscription[] = [];
+    const endpoint = req.body?.endpoint;
+    if (!isBrowserPushEndpoint(endpoint)) return res.status(400).json({ error: 'Cihaz aboneliği gerekli.' });
+    if (!pushConfigured) return res.status(503).json({ error: 'Bildirim servisi yapılandırılmamış.' });
+    const target = pushSubscriptions.find(item => item.endpoint === endpoint);
+    if (!target) return res.status(404).json({ error: 'Bu cihazın aboneliği bulunamadı.' });
 
-    if (subscription && subscription.endpoint) {
-      targetSubs.push(subscription);
-    } else if (pushSubscriptions.length > 0) {
-      pushSubscriptions.forEach(s => targetSubs.push(s.subscription));
+    try {
+      await webpush.sendNotification(target.subscription, JSON.stringify({
+        title: 'Dijital Kütüphanem · Test bildirimi',
+        body: 'Bu bildirim, bu cihazın hatırlatma ayarlarını test etmek için gönderildi.',
+        url: '/?tab=today',
+        tag: 'dk-test-push',
+      }), { TTL: 60, urgency: 'normal', timeout: 10000 });
+      res.json({ success: true, sentCount: 1 });
+    } catch {
+      res.status(502).json({ error: 'Bildirim sağlayıcısı isteği kabul etmedi.' });
     }
-
-    if (targetSubs.length === 0) {
-      return res.status(400).json({ error: 'Kayıtlı telefon/cihaz aboneliği bulunamadı. Lütfen önce bildirim iznini onaylayın.' });
-    }
-
-    const payload = JSON.stringify({
-      title: '📖 Dijital Kütüphanem: Okuma Vakti',
-      body: 'Harika! Telefonunuz ve uygulama kapalıyken bile bu bildirim doğrudan kilit ekranınıza ulaşır.',
-      url: '/?tab=today',
-      tag: `test-push-${Date.now()}`
-    });
-
-    const pushOptions = {
-      TTL: 86400,
-      urgency: 'high' as const
-    };
-
-    let sentCount = 0;
-    const errors: string[] = [];
-
-    for (const sub of targetSubs) {
-      try {
-        await webpush.sendNotification(sub, payload, pushOptions);
-        sentCount++;
-      } catch (pushErr: any) {
-        console.warn('Test push send error:', pushErr?.statusCode || pushErr?.message);
-        errors.push(pushErr?.message || 'Push delivery failed');
-      }
-    }
-
-    console.log(`[Test Push Sent] Successfully dispatched to ${sentCount}/${targetSubs.length} device(s)`);
-    res.json({ success: sentCount > 0, sentCount, errors: errors.length > 0 ? errors : undefined });
   });
 
-  // Native Android Widget Data Endpoint
+  // The native widget has no authenticated link to the browser's local library.
   app.get('/api/widget-data', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.json({
-      bookPercent: 82,
-      todayPages: 33,
-      dailyTarget: 40,
-      hatimPercent: 23,
-      currentHizb: 14,
-      ilimPercent: 4.2,
-      completedBooks: 6,
-      curriculumTotal: 1920,
-      updatedAt: new Date().toISOString()
-    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ available: false });
   });
-
-  // Intelligent Dynamic Brain Engine: Uses RAG context & encyclopedic knowledge base
-  function generateDynamicRobiFallback(message: string, context: any, denseContext?: string, history?: any[]): string {
-    return askRobiBrain({
-      message,
-      history,
-      densePromptContext: denseContext,
-      userSummary: context
-    });
-  }
 
   // Helper hash function for deterministic variation based on prompt text
   function hashString(str: string): number {
@@ -324,89 +278,32 @@ Yanıtını MUTLAKA sadece aşağıdaki JSON formatında ver (ekstra markdown t�
   });
 
   app.post('/api/ai-chat', async (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
+    const { message, mode, history, userContext, densePromptContext, userSummary } = req.body ?? {};
+    const question = typeof message === 'string' ? message.trim() : '';
+    if (!question || question.length > 12000) {
+      return res.status(400).json({ error: 'Lütfen 1 ile 12.000 karakter arasında bir soru veya metin gir.' });
+    }
+
+    const chatMode = normalizeRobiMode(mode);
+    if (chatMode === 'source' && getRobiSourceUrls(question).length === 0) {
+      return res.status(400).json({ error: 'Kaynak incelemek için mesajına herkese açık bir web bağlantısı ekle.' });
+    }
+
+    const archive = typeof densePromptContext === 'string' ? densePromptContext
+      : typeof userContext === 'string' ? userContext : userContext ? JSON.stringify(userContext) : '';
+
     try {
-      const { message, history, userContext, densePromptContext, userSummary } = req.body;
-
-      const ragContextText = densePromptContext || (typeof userContext === 'string' ? userContext : JSON.stringify(userContext || {}));
-
-      const systemInstruction = `Sen Dijital Kütüphanem uygulamasının bilge, neşeli, felsefi ve ansiklopedik birikimli sincap koçu "Robi"sin (🐿️ İlim, Kültür ve Tefekkür Koçu). 
-Kullanıcı için felsefe, edebiyat, teoloji, tarih ve kişisel gelişim yolculuğunda entelektüel bir yoldaş ve koçsun.
-
-[GÖREVLERİN VE KİŞİLİĞİN]:
-1. Entelektüel ve Ansiklopedik Derinlik: Yüzeysel, kısa veya geçiştirici cevaplar verme; felsefi akımlara, klasik başyapıtlara, kavramsal tahlillere ve dil etimolojisine değinen doyurucu, derin ve zengin açıklamalar sun.
-2. Doğrudan ve Canlı Odak: Kullanıcının sorduğu soruya doğrudan odaklan. ASLA kütüphanedeki kitapların sayfa numaralarını veya okuma yüzdelerini mekanik bir liste halinde ardı ardına sıralama veya kopyalama! RAG bağlamındaki eserleri sadece konuyla doğrudan ilgiliyse zarif ve canlı bir dost sohbeti içinde hikmetle bağla.
-3. 12 Kategori, Şiir ve 40 Yıllık Müfredat Hakimiyeti: Kütüphanedeki 12 ana kategoriye, 256 şiire ve 40 yıllık ilim müfredatına tam hakimsin. Gazali, İbn Rüşd, Kant, Tanpınar, Cemil Meriç, Dostoyevski, Mevlana, Sezai Karakoç ve diğer klasik şahsiyetlerin düşüncelerini harmanla.
-4. Sesli İletişime Uygun Akıcı Türkçe: Sesli dinlendiğin için sıcak, bilge, neşeli ve akıcı bir Türkçe ile konuş.
-
-[Okur Bağlamı ve Vektör Arama Özeti]:
-${ragContextText}
-`;
-
-      const trimmedHistory = (history || []).slice(-8);
-
-      const contents = [
-        ...trimmedHistory.map((m: any) => ({
-          role: m.role === 'user' ? 'user' : 'model',
-          parts: [{ text: m.text || m.parts?.[0]?.text || '' }]
-        })),
-        { 
-          role: 'user', 
-          parts: [{ text: message }] 
-        }
-      ];
-
-      let response;
-      // gemini-3.1-flash-lite is operational, fast, and has active free-tier quota
-      const modelsToTry = [
-        'gemini-3.1-flash-lite',
-        'gemini-2.5-flash-lite',
-        'gemini-2.0-flash-lite',
-        'gemini-2.5-flash',
-        'gemini-flash-latest',
-        'gemini-3.8-flash'
-      ];
-      let lastError: any = null;
-      const currentApiKey = process.env.GEMINI_API_KEY || '';
-      const currentAi = getGenAI();
-
-      if (currentApiKey) {
-        for (const m of modelsToTry) {
-          // Attempt direct generation first for fast, reliable, substantive response
-          try {
-            response = await currentAi.models.generateContent({
-              model: m,
-              contents: contents,
-              config: {
-                systemInstruction
-              }
-            });
-            if (response && response.text) {
-              console.log(`[Gemini Success Direct] Model: ${m}`);
-              break;
-            }
-          } catch (modelErr: any) {
-            console.warn(`[Gemini Direct Error] ${m}:`, modelErr?.status, modelErr?.message?.substring(0, 120));
-            lastError = modelErr;
-          }
-        }
-      }
-
-      if (response && response.text) {
-        return res.json({ reply: response.text });
-      }
-
-      // Seamless fallback to intelligent encyclopedic persona with rich domain knowledge
-      const dynamicReply = generateDynamicRobiFallback(message, userContext || userSummary, densePromptContext, history);
-      return res.json({ 
-        reply: dynamicReply,
-        isFallback: true
-      });
-
-    } catch (err: any) {
-      console.warn("AI Chat Error intercepted:", err?.message || err);
-      const dynamicReply = generateDynamicRobiFallback(req.body?.message, req.body?.userContext || req.body?.userSummary, req.body?.densePromptContext, req.body?.history);
-      return res.json({ reply: dynamicReply, isFallback: true });
+      const ai = process.env.GEMINI_API_KEY?.trim() ? getGenAI() : undefined;
+      return res.json(await generateRobiChat(ai, {
+        message: question,
+        mode: chatMode,
+        history,
+        archive,
+        summary: userSummary ?? userContext,
+      }));
+    } catch {
+      return res.status(500).json({ error: 'Robi şu anda yanıt veremiyor. Lütfen yeniden dene.' });
     }
   });
 
@@ -441,26 +338,21 @@ ${ragContextText}
   // Triggers Web Push to user devices at their scheduled time, even when phone screen and app are completely closed!
   setInterval(async () => {
     try {
-      if (pushSubscriptions.length === 0) return;
+      if (!pushConfigured || pushSubscriptions.length === 0) return;
 
       const now = new Date();
       let modified = false;
 
-      // Current time in Turkey (Europe/Istanbul)
-      const trDateStr = now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' });
-      const istanbulDate = new Date(trDateStr);
-      const trHours = String(istanbulDate.getHours()).padStart(2, '0');
-      const trMinutes = String(istanbulDate.getMinutes()).padStart(2, '0');
-      const trCurrentTime = `${trHours}:${trMinutes}`;
-
-      const year = istanbulDate.getFullYear();
-      const month = String(istanbulDate.getMonth() + 1).padStart(2, '0');
-      const day = String(istanbulDate.getDate()).padStart(2, '0');
-      const currentSlot = `${year}-${month}-${day}_${trCurrentTime}`;
-
       for (let i = pushSubscriptions.length - 1; i >= 0; i--) {
         const item = pushSubscriptions[i];
-        if (!item.reminderTimes || !Array.isArray(item.reminderTimes) || item.reminderTimes.length === 0) continue;
+        if (!item?.reminderTimes?.length) continue;
+        const parts = new Intl.DateTimeFormat('en', {
+          timeZone: item.timeZone || 'Europe/Istanbul', hourCycle: 'h23', year: 'numeric',
+          month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+        }).formatToParts(now);
+        const get = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value;
+        const trCurrentTime = `${get('hour')}:${get('minute')}`;
+        const currentSlot = `${get('year')}-${get('month')}-${get('day')}_${trCurrentTime}`;
 
         if (item.reminderTimes.includes(trCurrentTime)) {
           if (item.lastNotifiedSlot !== currentSlot) {
@@ -481,7 +373,7 @@ ${ragContextText}
 
             try {
               await webpush.sendNotification(item.subscription, payload, pushOptions);
-              console.log(`[Scheduled Push Sent] Dispatched to ${item.endpoint.substring(0, 35)}... at ${trCurrentTime}`);
+
             } catch (err: any) {
               console.warn('[Scheduled Push Failed]:', err?.statusCode || err?.message);
               if (err?.statusCode === 410 || err?.statusCode === 404) {
