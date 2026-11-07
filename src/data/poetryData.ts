@@ -1,4 +1,4 @@
-import { Poet, Poem } from '../types';
+import { Poet } from '../types';
 
 export const POETS_COLLECTION_FULL: Poet[] = [
   {
@@ -414,65 +414,3 @@ export const POETS_COLLECTION_FULL: Poet[] = [
     ]
   }
 ];
-
-// Dynamically generate remaining poets and poems up to 256 poems
-export function getFull256PoetryCollection(): Poet[] {
-  const collection = [...POETS_COLLECTION_FULL];
-
-  const additionalPoets = [
-    { name: "Cemal Süreya", period: "İkinci Yeni", bio: "Aşkın, erotizmin ve Türkçenin en kıvrak zekalı şairi." },
-    { name: "Turgut Uyar", period: "İkinci Yeni", bio: "Büyük saatlerin, kent yalnızlığının ve hüzünlü mısraların usta kalemi." },
-    { name: "Edip Cansever", period: "İkinci Yeni", bio: "Masa, insan dramı ve varoluşun derin şairi." },
-    { name: "Attilâ İlhan", period: "Toplumcu & Mavi", bio: "Sisler bulvarı, kaptan ve romantik isyanın coşkulu sesi." },
-    { name: "Ahmed Arif", period: "Anadolu Şiiri", bio: "Hasretinden prangalar eskiten Anadolu sevdalısı dev şair." },
-    { name: "Nâzım Hikmet", period: "Serbest Nazım", bio: "Memleket sevdası ve serbest şiirin dünyaca ünlü ustası." },
-    { name: "Orhan Veli Kanık", period: "Garip Akımı", bio: "Sıradan insanı, sokakları ve yalın Türkçeyi şiire taşıyan usta." },
-    { name: "Nurullah Genç", period: "Çağdaş Mistik Şiir", bio: "Yağmur şiiri ve gül medeniyetinin çağdaş temsilcisi." },
-    { name: "Abdurrahim Karakoç", period: "Halk Şiiri & Mihriban", bio: "Mihriban türküsü ve Anadolu insanının berrak vicdanı." },
-    { name: "Erdem Bayazıt", period: "Yedi Güzel Adam", bio: "Sana, Bana, Vatanıma ve Bütün İnsanlara Dair coşkulu destan şairi." },
-    { name: "Nuri Pakdil", period: "Edebiyat Dergisi & Yedi Güzel Adam", bio: "Kudüs sevdalısı, biat etmeyen özgür kalemin simgesi." },
-    { name: "Cahit Sıtkı Tarancı", period: "Saf Şiir", bio: "Otuz Beş Yaş ve yaşama sevincinin unutulmaz şairi." },
-    { name: "Faruk Nafiz Çamlıbel", period: "Beş Hececiler", bio: "Han Duvarları ve memleket edebiyatının duayen ismi." },
-    { name: "Ahmet Haşim", period: "Sembolizm & Saf Şiir", bio: "Merdiven ve akşam vakitlerinin melankolik şairi." },
-    { name: "Ömer Khayyâm", period: "Doğu Klasikleri & Rubailer", bio: "Hikmetli rubaileriyle zamanın ve varlığın sırrını arayan bilge." },
-    { name: "Hafız-ı Şirazî", period: "Fars Edebiyatı Klasikleri", bio: "Şiraz gülleri ve ilahi aşkın Doğu'daki en parlak yıldızı." },
-    { name: "Sa'di Şirazî", period: "Bostan ve Gülistan", bio: "Ahlak, hikmet ve insani erdemlerin ölümsüz üstadı." },
-    { name: "Muhammed İkbal", period: "İslam Düşüncesi & Şiir", bio: "Doğudan Haberler ve İslam dünyasının uyanış şairi." },
-    { name: "Rainer Maria Rilke", period: "Batı Şiir Klasikleri", bio: "Duino Ağıtları ve nesne mistisizminin unutulmaz kalemi." },
-    { name: "Aleksandr Puşkin", period: "Rus Edebiyatı Klasikleri", bio: "Rus edebiyatının altın çağını başlatan kurucu dahi şair." }
-  ];
-
-  let poemCounter = 0;
-  collection.forEach(p => poemCounter += p.poems.length);
-
-  additionalPoets.forEach((pInfo, idx) => {
-    const poetId = `poet-extra-${idx + 1}`;
-    const poemsList: Poem[] = [];
-
-    const samplePoemTitles = [
-      "Büyük Saat ve Zaman", "Gül Kokulu Gece", "Yağmurun Sesi", "Hasret ve Umut",
-      "Sokak Lambası", "Gözlerin ve Gökyüzü", "Sonsuz Yolculuk", "Suskun Çeşme"
-    ];
-
-    for (let j = 0; j < 8; j++) {
-      poemCounter++;
-      const poemTitle = j === 0 ? `Seçme Mısralar I` : j === 1 ? `Gönül Aynası` : `${samplePoemTitles[j % samplePoemTitles.length]} - ${j + 1}`;
-      poemsList.push({
-        id: `p-gen-${poetId}-${j + 1}`,
-        title: poemTitle,
-        content: `Ey gönül, fani dünyaya meyleyleme,\nSonsuz huzur ancak Hak'ka yönelmekle bulunur.\n\nBir çiçek açar bahçede, kokusu yayılır aleme,\nSevgiyle bak dünyaya, her mısra şifa olur ruha.\n\nGece çöker, yıldızlar parıldar semada,\nİnsan ki dualarla yükselir arş-ı ala'ya.`
-      });
-    }
-
-    collection.push({
-      id: poetId,
-      name: pInfo.name,
-      period: pInfo.period,
-      portraitUrl: `https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=400&auto=format&fit=crop`,
-      bio: pInfo.bio,
-      poems: poemsList
-    });
-  });
-
-  return collection;
-}

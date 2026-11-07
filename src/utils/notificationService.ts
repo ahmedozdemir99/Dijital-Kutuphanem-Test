@@ -1,3 +1,4 @@
+import { readingDate } from './readingDate';
 // Notification Service for Background Notifications & Active Reminders
 
 import { playNotificationChime } from './audioUtils';
@@ -109,6 +110,28 @@ export const requestSystemNotificationPermission = async (): Promise<boolean> =>
   }
 };
 
+async function activeServiceWorker(): Promise<ServiceWorkerRegistration> {
+  const current = await navigator.serviceWorker.getRegistration();
+  if (current?.active) return current;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error('Bildirim servisi hazır değil. Uygulamayı yeniden açıp dene.')), 5000); }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function disableCloudPush(): Promise<void> {
+  if (!('serviceWorker' in navigator)) return;
+  const registration = await navigator.serviceWorker.getRegistration();
+  const subscription = await registration?.pushManager?.getSubscription();
+  if (!subscription) return;
+  await subscription.unsubscribe();
+}
+
 // Subscribe user device to 24/7 Cloud WebPush (wakes phone up when app and screen are closed)
 export const subscribeToCloudPush = async (reminderTimes: string[] = ['08:30', '14:00', '21:30']): Promise<PushActionResult> => {
   if (typeof window === 'undefined') {
@@ -149,12 +172,7 @@ export const subscribeToCloudPush = async (reminderTimes: string[] = ['08:30', '
       };
     }
 
-    // Ensure service worker is registered & active
-    let reg = await navigator.serviceWorker.getRegistration();
-    if (!reg) {
-      reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-    }
-    const swReady = await navigator.serviceWorker.ready;
+    const swReady = await activeServiceWorker();
 
     if (!swReady || !swReady.pushManager) {
       return { success: false, message: 'PushManager bu tarayıcıda hazır değil.' };
@@ -162,6 +180,7 @@ export const subscribeToCloudPush = async (reminderTimes: string[] = ['08:30', '
 
     // Get public VAPID key from backend
     const keyRes = await fetch('/api/push-public-key');
+    if (!keyRes.ok) return { success: false, message: 'Sunucuda bildirim servisi yapılandırılmamış.' };
     const { publicKey } = await keyRes.json();
     if (!publicKey) {
       return { success: false, message: 'Sunucu bildirim anahtarı temin edilemedi.' };
@@ -227,17 +246,21 @@ export const sendServerTestPush = async (reminderTimes?: string[]): Promise<Push
       return subResult;
     }
 
+    const registration = await activeServiceWorker();
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return { success: false, message: 'Bu cihaz için etkin bir bildirim aboneliği bulunamadı.' };
+
     const res = await fetch('/api/send-test-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
+      body: JSON.stringify({ endpoint: subscription.endpoint })
     });
 
     const data = await res.json();
     if (res.ok && data.success) {
       return { 
         success: true, 
-        message: '✅ Bulut Push bildirimi telefonunuza gönderildi! Şimdi uygulamayı kapatıp ekranı kilitleseniz dahi bildirim doğrudan kilit ekranınıza düşecektir.' 
+        message: 'Test bildirimi bu cihazın bildirim sağlayıcısına gönderildi.'
       };
     } else {
       return { 
@@ -298,7 +321,7 @@ export const sendSystemNotification = async (
   // Method 1: Through Service Worker Registration
   if ('serviceWorker' in navigator) {
     try {
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await activeServiceWorker();
       if (registration && registration.showNotification) {
         await registration.showNotification(title, notifOptions);
         return true;
@@ -346,7 +369,7 @@ export const startActiveReminderWatcher = () => {
     const currentTimeStr = `${currentHours}:${currentMinutes}`;
 
     if (currentTimeStr === settings.time) {
-      const todayDateStr = now.toISOString().split('T')[0];
+      const todayDateStr = readingDate(now);
       const lastFiredDate = localStorage.getItem('dk_last_reminder_date');
 
       if (lastFiredDate !== todayDateStr) {

@@ -1,36 +1,35 @@
-import React from 'react';
+import React, { lazy, Suspense, useTransition } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Flame, BookOpen, Compass, Archive, User, Moon, Sun, Download, ShieldCheck, Sparkles, Plus, Quote as QuoteIcon, FileText, Star, TrendingUp, MessageSquare, X 
 } from 'lucide-react';
 import { AppProvider, useApp } from './context/AppContext';
 import { TodayView } from './components/TodayView';
-import { LibraryView } from './components/LibraryView';
-import { ExploreView } from './components/ExploreView';
-import { ArchiveView } from './components/ArchiveView';
-import { StatsView } from './components/StatsView';
-import { ChatView } from './components/ChatView';
-import { ProfileView } from './components/ProfileView';
-import { ReaderModal } from './components/ReaderModal';
 import { GlobalAddModals } from './components/GlobalAddModals';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { BookDetailModal } from './components/BookDetailModal';
-import { StandaloneWidgetView } from './components/StandaloneWidgetView';
-import { MainTab } from './types';
+import type { MainTab } from './types';
 
+const tabViews = {
+  today: TodayView,
+  library: lazy(() => import('./components/LibraryView').then(module => ({ default: module.LibraryView }))),
+  explore: lazy(() => import('./components/ExploreView').then(module => ({ default: module.ExploreView }))),
+  archive: lazy(() => import('./components/ArchiveView').then(module => ({ default: module.ArchiveView }))),
+  stats: lazy(() => import('./components/StatsView').then(module => ({ default: module.StatsView }))),
+  chat: lazy(() => import('./components/ChatView').then(module => ({ default: module.ChatView }))),
+  profile: lazy(() => import('./components/ProfileView').then(module => ({ default: module.ProfileView }))),
+} satisfies Record<MainTab, React.ComponentType>;
+
+const StandaloneWidgetView = lazy(() => import('./components/StandaloneWidgetView').then(module => ({ default: module.StandaloneWidgetView })));
+const WidgetView = lazy(() => import('./components/WidgetView').then(module => ({ default: module.WidgetView })));
+const CoverManagerModal = lazy(() => import('./components/CoverManagerModal').then(module => ({ default: module.CoverManagerModal })));
+const ReaderModal = lazy(() => import('./components/ReaderModal').then(module => ({ default: module.ReaderModal })));
 
 function MainAppContent() {
-  const isWidgetMode = window.location.search.includes('widget') || 
-                       window.location.hash.includes('widget') || 
-                       window.location.pathname.endsWith('/widget');
-
-  if (isWidgetMode) {
-    return <StandaloneWidgetView />;
-  }
   const { 
     activeTab, 
-    setActiveTab, 
+    setActiveTab: setCurrentTab,
     activeBookForReader, 
     setActiveBookForReader,
     selectedBookForDetail,
@@ -50,6 +49,13 @@ function MainAppContent() {
   } = useApp();
 
   const [isAddMenuOpen, setIsAddMenuOpen] = React.useState(false);
+  const [isCoverManagerOpen, setIsCoverManagerOpen] = React.useState(false);
+  const [isTabPending, startTabTransition] = useTransition();
+  const ActiveView = tabViews[activeTab];
+
+  const setActiveTab = (tab: MainTab) => {
+    startTabTransition(() => setCurrentTab(tab));
+  };
 
   return (
     <div className="min-h-screen bg-[#F8F5EF] dark:bg-[#141414] text-slate-800 dark:text-slate-100 flex flex-col selection:bg-[#742C3C] selection:text-white pb-24">
@@ -229,14 +235,10 @@ function MainAppContent() {
       </header>
 
       {/* Main View Container */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 pt-4">
-        {activeTab === 'today' && <TodayView />}
-        {activeTab === 'library' && <LibraryView />}
-        {activeTab === 'explore' && <ExploreView />}
-        {activeTab === 'archive' && <ArchiveView />}
-        {activeTab === 'stats' && <StatsView />}
-        {activeTab === 'chat' && <ChatView />}
-        {activeTab === 'profile' && <ProfileView />}
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 pt-4" aria-busy={isTabPending}>
+        <Suspense fallback={<p role="status" className="py-6 text-center text-sm">Yükleniyor…</p>}>
+          <ActiveView />
+        </Suspense>
       </main>
 
       {/* Global Creation Modals Overlay */}
@@ -245,119 +247,127 @@ function MainAppContent() {
 
       {/* Reader Modal Overlay when active */}
       {activeBookForReader && (
-        <ReaderModal 
-          book={activeBookForReader}
-          onClose={() => setActiveBookForReader(null)}
-          onUpdatePage={(bookId, page) => updateBookProgress(bookId, page)}
-          onAddQuote={(quoteText, pageNum, note) => {
-            addQuotation(quoteText, pageNum, note, activeBookForReader.id, activeBookForReader.title, activeBookForReader.author);
-          }}
-        />
+        <Suspense fallback={null}>
+          <ReaderModal
+            key={activeBookForReader.id}
+            book={activeBookForReader}
+            onClose={() => setActiveBookForReader(null)}
+            onUpdatePage={updateBookProgress}
+            onAddQuote={(quoteText, pageNum, note) => {
+              addQuotation(quoteText, pageNum, note, activeBookForReader.id, activeBookForReader.title, activeBookForReader.author);
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Book Detail Modal */}
-      <BookDetailModal 
+      <BookDetailModal
+        key={selectedBookForDetail?.id}
         book={selectedBookForDetail}
         onClose={() => setSelectedBookForDetail(null)}
-        onOpenCoverManager={() => {}}
+        onOpenCoverManager={() => setIsCoverManagerOpen(true)}
       />
+
+      {isCoverManagerOpen && (
+        <Suspense fallback={null}>
+          <CoverManagerModal isOpen onClose={() => setIsCoverManagerOpen(false)} />
+        </Suspense>
+      )}
 
       {/* Offline Status Notice */}
       <OfflineIndicator />
 
       {/* Fixed Bottom Mobile Navigation Bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#1E1E1E]/95 backdrop-blur-lg border-t border-black/10 dark:border-white/10 px-2 py-2 safe-area-bottom shadow-2xl">
-        <div className="max-w-md mx-auto flex items-center justify-around">
+        <div className="max-w-md mx-auto grid grid-cols-7 items-center">
           <button
             onClick={() => setActiveTab('today')}
-            className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-2xl transition-all ${
+            className={`flex min-w-0 flex-col items-center gap-1 px-0.5 py-1.5 rounded-2xl transition-all ${
               activeTab === 'today' 
                 ? 'text-[#742C3C] dark:text-[#B79A63] font-bold scale-105' 
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
             <Flame className={`w-5 h-5 ${activeTab === 'today' ? 'fill-current' : ''}`} />
-            <span className="text-[10px] font-medium">Bugün</span>
+            <span className="whitespace-nowrap text-[9px] font-medium sm:text-[10px]">Bugün</span>
           </button>
 
           <button
             onClick={() => setActiveTab('library')}
-            className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-2xl transition-all ${
+            className={`flex min-w-0 flex-col items-center gap-1 px-0.5 py-1.5 rounded-2xl transition-all ${
               activeTab === 'library' 
                 ? 'text-[#742C3C] dark:text-[#B79A63] font-bold scale-105' 
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
             <BookOpen className={`w-5 h-5 ${activeTab === 'library' ? 'fill-current' : ''}`} />
-            <span className="text-[10px] font-medium">Kütüphanem</span>
+            <span className="whitespace-nowrap text-[9px] font-medium sm:text-[10px]">Kütüphanem</span>
           </button>
 
           <button
             onClick={() => setActiveTab('explore')}
-            className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-2xl transition-all ${
+            className={`flex min-w-0 flex-col items-center gap-1 px-0.5 py-1.5 rounded-2xl transition-all ${
               activeTab === 'explore' 
                 ? 'text-[#742C3C] dark:text-[#B79A63] font-bold scale-105' 
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
             <Compass className={`w-5 h-5 ${activeTab === 'explore' ? 'fill-current' : ''}`} />
-            <span className="text-[10px] font-medium">Keşfet</span>
+            <span className="whitespace-nowrap text-[9px] font-medium sm:text-[10px]">Keşfet</span>
           </button>
 
           <button
             onClick={() => setActiveTab('archive')}
-            className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-2xl transition-all ${
+            className={`flex min-w-0 flex-col items-center gap-1 px-0.5 py-1.5 rounded-2xl transition-all ${
               activeTab === 'archive' 
                 ? 'text-[#742C3C] dark:text-[#B79A63] font-bold scale-105' 
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
             <Archive className={`w-5 h-5 ${activeTab === 'archive' ? 'fill-current' : ''}`} />
-            <span className="text-[10px] font-medium">Arşiv</span>
+            <span className="whitespace-nowrap text-[9px] font-medium sm:text-[10px]">Arşiv</span>
           </button>
 
           <button
             onClick={() => setActiveTab('stats')}
-            className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-2xl transition-all ${
+            className={`flex min-w-0 flex-col items-center gap-1 px-0.5 py-1.5 rounded-2xl transition-all ${
               activeTab === 'stats' 
                 ? 'text-[#742C3C] dark:text-[#B79A63] font-bold scale-105' 
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
             <TrendingUp className={`w-5 h-5 ${activeTab === 'stats' ? 'fill-current' : ''}`} />
-            <span className="text-[10px] font-medium">İstatistik</span>
+            <span className="whitespace-nowrap text-[9px] font-medium sm:text-[10px]">İstatistik</span>
           </button>
 
           <button
             onClick={() => setActiveTab('chat')}
-            className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-2xl transition-all ${
+            className={`flex min-w-0 flex-col items-center gap-1 px-0.5 py-1.5 rounded-2xl transition-all ${
               activeTab === 'chat' 
                 ? 'text-[#742C3C] dark:text-[#B79A63] font-bold scale-105' 
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
             <MessageSquare className={`w-5 h-5 ${activeTab === 'chat' ? 'fill-current' : ''}`} />
-            <span className="text-[10px] font-medium">Yapay Zeka</span>
+            <span className="whitespace-nowrap text-[9px] font-medium sm:text-[10px]">Yapay Zeka</span>
           </button>
 
           <button
             onClick={() => setActiveTab('profile')}
-            className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-2xl transition-all ${
+            className={`flex min-w-0 flex-col items-center gap-1 px-0.5 py-1.5 rounded-2xl transition-all ${
               activeTab === 'profile' 
                 ? 'text-[#742C3C] dark:text-[#B79A63] font-bold scale-105' 
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-900'
             }`}
           >
             <User className={`w-5 h-5 ${activeTab === 'profile' ? 'fill-current' : ''}`} />
-            <span className="text-[10px] font-medium">Profil</span>
+            <span className="whitespace-nowrap text-[9px] font-medium sm:text-[10px]">Profil</span>
           </button>
         </div>
       </nav>
     </div>
   );
 }
-
-import { WidgetView } from './components/WidgetView';
 
 export default function App() {
   const isWidget = typeof window !== 'undefined' && (
@@ -366,12 +376,15 @@ export default function App() {
   );
 
   if (isWidget) {
-    return <WidgetView />;
+    return <AppProvider><Suspense fallback={null}><WidgetView /></Suspense></AppProvider>;
   }
+
+  const isStandaloneWidget = window.location.search.includes('widget') ||
+    window.location.hash.includes('widget') || window.location.pathname.endsWith('/widget');
 
   return (
     <AppProvider>
-      <MainAppContent />
+      {isStandaloneWidget ? <Suspense fallback={null}><StandaloneWidgetView /></Suspense> : <MainAppContent />}
     </AppProvider>
   );
 }

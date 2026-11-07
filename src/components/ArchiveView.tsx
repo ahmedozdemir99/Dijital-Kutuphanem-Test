@@ -282,25 +282,13 @@ export const ArchiveView: React.FC = () => {
     }
   };
 
-  // Filtered Lists
-  const filteredReviews = reviews.filter(r => 
-    r.bookTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.content.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const query = searchQuery.trim().toLocaleLowerCase('tr');
+  const matches = (...values: (string | undefined)[]) =>
+    !query || values.some(value => typeof value === 'string' && value.toLocaleLowerCase('tr').includes(query));
 
-  const filteredQuotes = quotations.filter(q => 
-    q.quoteText.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    q.bookTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    q.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (q.userNote && q.userNote.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
-  const filteredWords = vocabulary.filter(v => 
-    v.word.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    v.meaning.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (v.sourceBookTitle && v.sourceBookTitle.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredReviews = reviews.filter(item => matches(item.bookTitle, item.author, item.content));
+  const filteredQuotes = quotations.filter(item => matches(item.quoteText, item.bookTitle, item.author, item.userNote));
+  const filteredWords = vocabulary.filter(item => matches(item.word, item.meaning, item.sourceBookTitle));
 
   return (
     <div className="space-y-6 pb-12">
@@ -444,7 +432,7 @@ export const ArchiveView: React.FC = () => {
                     </div>
 
                     <button
-                      onClick={() => deleteQuotation(q.id)}
+                      onClick={() => { if (window.confirm('Bu alıntı silinsin mi?')) deleteQuotation(q.id); }}
                       className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
                       title="Sil"
                     >
@@ -516,7 +504,7 @@ export const ArchiveView: React.FC = () => {
 
                 <div className="flex justify-between items-center text-[10px] text-slate-400 pt-2 border-t border-black/5">
                   <span>Tarih: {new Date(r.createdAt).toLocaleDateString('tr-TR')}</span>
-                  <button onClick={() => deleteReview(r.id)} className="text-rose-500 hover:underline">
+                  <button onClick={() => { if (window.confirm('Bu inceleme silinsin mi?')) deleteReview(r.id); }} className="text-rose-500 hover:underline">
                     İncelemeyi Sil
                   </button>
                 </div>
@@ -568,7 +556,7 @@ export const ArchiveView: React.FC = () => {
 
                 <div className="flex justify-between items-center text-[10px] text-slate-400 pt-2 border-t border-black/5">
                   <span>{v.sourceBookTitle || 'Genel Okuma'}</span>
-                  <button onClick={() => deleteVocabularyItem(v.id)} className="text-rose-500 hover:underline">
+                  <button onClick={() => { if (window.confirm('Bu kelime silinsin mi?')) deleteVocabularyItem(v.id); }} className="text-rose-500 hover:underline">
                     Sil
                   </button>
                 </div>

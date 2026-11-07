@@ -1,3 +1,4 @@
+import { quranPagesToday, readingDate } from '../utils/readingDate';
 import React, { useState } from 'react';
 import { 
   BookOpen, Target, Calendar as CalendarIcon, Award, TrendingUp, Flame, 
@@ -242,14 +243,14 @@ export const TodayView: React.FC = () => {
   const [selectedBookForUpdate, setSelectedBookForUpdate] = useState<UserBook | null>(null);
   const [inputPage, setInputPage] = useState<number>(0);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
+    readingDate()
   );
   
   // Active Featured Author Index state for "Yazarı Değiştir 🔄" feature
   const [authorIndex, setAuthorIndex] = useState<number>(0);
   const [addedBookTitle, setAddedBookTitle] = useState<string | null>(null);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = readingDate();
   const activeFeaturedAuthor = FEATURED_AUTHORS[authorIndex % FEATURED_AUTHORS.length];
 
   const handleNextAuthor = () => {
@@ -328,7 +329,7 @@ export const TodayView: React.FC = () => {
   const calendarDays = Array.from({ length: 14 }).map((_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (13 - i));
-    const dStr = d.toISOString().split('T')[0];
+    const dStr = readingDate(d);
     const daySessions = readingSessions.filter(s => s.date === dStr);
     const dayPages = daySessions.reduce((acc, curr) => acc + curr.pagesRead, 0);
     return {
@@ -471,7 +472,7 @@ export const TodayView: React.FC = () => {
             <span className="text-xs text-[#D4AF37] font-semibold">1 Hizb / Gün Hedefi</span>
           </div>
           <h2 className="font-serif-title font-bold text-2xl text-white">
-            Bugün Okunan Kur'an: {quranProgress.pagesReadToday || 0} Sayfa
+            Bugün Okunan Kur'an: {quranPagesToday(quranProgress)} Sayfa
           </h2>
           <p className="text-xs text-white/80 max-w-md">
             Kitap okuma hedefinizden bağımsız hesaplanır. Tamamlanan Cüz: <strong>{quranProgress.completedJuzs?.length || 0} / 30</strong> (%{Math.round(((quranProgress.completedJuzs?.length || 0) / 30) * 100)})
@@ -480,7 +481,7 @@ export const TodayView: React.FC = () => {
 
         <div className="flex flex-wrap items-center justify-center gap-3">
           <button
-            onClick={() => updateQuranProgress({ pagesReadToday: (quranProgress.pagesReadToday || 0) + 1 })}
+            onClick={() => updateQuranProgress({ pagesReadToday: (quranPagesToday(quranProgress)) + 1 })}
             className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md"
           >
             +1 Sayfa Ekle
@@ -577,7 +578,7 @@ export const TodayView: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {activeBooks.map(book => {
-                const bookProgress = Math.round((book.currentPage / book.totalPages) * 100);
+                const bookProgress = Math.round((book.currentPage / Math.max(1, book.totalPages)) * 100);
                 return (
                   <div 
                     key={book.id}

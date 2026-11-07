@@ -24,9 +24,9 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 export async function saveBookFileToIDB(bookId: string, fileBlob: Blob | File, fileName: string, fileType: 'pdf' | 'epub'): Promise<string> {
+  const db = await openDB();
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(FILES_STORE, 'readwrite');
       const store = transaction.objectStore(FILES_STORE);
       const record = {
@@ -36,16 +36,27 @@ export async function saveBookFileToIDB(bookId: string, fileBlob: Blob | File, f
         fileType,
         updatedAt: new Date().toISOString()
       };
-      const req = store.put(record, bookId);
-      req.onsuccess = () => {
-        const objectUrl = URL.createObjectURL(fileBlob);
-        resolve(objectUrl);
-      };
-      req.onerror = () => reject(req.error);
+      store.put(record, bookId);
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error);
     });
-  } catch (err) {
-    console.error("IndexedDB Save File Error:", err);
     return URL.createObjectURL(fileBlob);
+  } finally {
+    db.close();
+  }
+}
+
+export async function deleteBookFileFromIDB(bookId: string): Promise<void> {
+  const db = await openDB();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(FILES_STORE, 'readwrite');
+      transaction.objectStore(FILES_STORE).delete(bookId);
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error);
+    });
+  } finally {
+    db.close();
   }
 }
 
@@ -130,17 +141,26 @@ export async function getCoverFromIDB(bookId: string): Promise<string | null> {
 }
 
 export async function saveAppDataToIDB(key: string, data: any): Promise<void> {
+  await saveAppDataBatchToIDB([[key, data]]);
+}
+
+export async function saveAppDataBatchToIDB(entries: [string, unknown][]): Promise<void> {
+  const db = await openDB();
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction('dataBackup', 'readwrite');
       const store = transaction.objectStore('dataBackup');
-      const req = store.put(data, key);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error || new Error('Yerel kayıt tamamlanamadı.'));
+      try {
+        for (const [key, value] of entries) store.put(value, key);
+      } catch (error) {
+        transaction.abort();
+        reject(error);
+      }
     });
-  } catch (err) {
-    console.error("IndexedDB Save App Data Error:", err);
+  } finally {
+    db.close();
   }
 }
 

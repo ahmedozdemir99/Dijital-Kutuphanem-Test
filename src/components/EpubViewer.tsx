@@ -18,6 +18,39 @@ interface Chapter {
   textOnly: string;
 }
 
+const EPUB_TEXT_ELEMENTS = new Set([
+  'p', 'div', 'span', 'article', 'section', 'aside', 'header', 'footer',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code', 'strong', 'b',
+  'em', 'i', 'u', 's', 'small', 'sup', 'sub', 'ol', 'ul', 'li', 'dl', 'dt', 'dd',
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'figure', 'figcaption', 'br', 'hr',
+]);
+
+function sanitizeChapter(body: HTMLElement): string {
+  const document = body.ownerDocument;
+  const output = document.createElement('div');
+  const append = (node: Node, parent: HTMLElement) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      parent.append(document.createTextNode(node.textContent || ''));
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const element = node as Element;
+    const tag = element.localName;
+    if (['script', 'style', 'iframe', 'object', 'embed', 'template'].includes(tag)) return;
+    if (EPUB_TEXT_ELEMENTS.has(tag)) {
+      const clean = document.createElement(tag);
+      const dir = element.getAttribute('dir');
+      if (dir === 'rtl' || dir === 'ltr' || dir === 'auto') clean.dir = dir;
+      parent.append(clean);
+      for (const child of node.childNodes) append(child, clean);
+    } else {
+      for (const child of node.childNodes) append(child, parent);
+    }
+  };
+  for (const child of body.childNodes) append(child, output);
+  return output.innerHTML;
+}
+
 export const EpubViewer: React.FC<EpubViewerProps> = ({
   epubUrl,
   chapterIndex,
@@ -40,6 +73,7 @@ export const EpubViewer: React.FC<EpubViewerProps> = ({
         setError(null);
 
         const res = await fetch(epubUrl);
+        if (!res.ok) throw new Error('EPUB dosyası açılamadı.');
         const blob = await res.blob();
         const zip = await JSZip.loadAsync(blob);
 
@@ -67,7 +101,10 @@ export const EpubViewer: React.FC<EpubViewerProps> = ({
         manifestItems.forEach(item => {
           const id = item.getAttribute('id');
           const href = item.getAttribute('href');
-          if (id && href) itemMap.set(id, opfDir + href);
+          if (id && href) {
+            const resolved = new URL(href, `https://epub.local/${opfDir}`);
+            if (resolved.origin === 'https://epub.local') itemMap.set(id, resolved.pathname.slice(1));
+          }
         });
 
         const spineItems = Array.from(opfDoc.querySelectorAll('spine > itemref'));
@@ -84,11 +121,8 @@ export const EpubViewer: React.FC<EpubViewerProps> = ({
             const chapterHtml = await chapterFile.async('text');
             const chapDoc = parser.parseFromString(chapterHtml, 'text/html');
 
-            // Clean up scripts & style tags
-            chapDoc.querySelectorAll('script, style').forEach(el => el.remove());
-
             const chapTitle = chapDoc.querySelector('h1, h2, h3, title')?.textContent?.trim() || `Bölüm ${i + 1}`;
-            const bodyHtml = chapDoc.body ? chapDoc.body.innerHTML : chapterHtml;
+            const bodyHtml = sanitizeChapter(chapDoc.body);
             const textOnly = chapDoc.body ? chapDoc.body.textContent || '' : '';
 
             chapterList.push({

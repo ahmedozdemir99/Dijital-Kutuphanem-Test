@@ -1,3 +1,4 @@
+import { readingDate } from '../utils/readingDate';
 import React, { useState } from 'react';
 import { 
   Quote, Flame, BookOpen, Plus, Sparkles, RefreshCw, Copy, Check, 
@@ -29,7 +30,7 @@ export const HomeScreenWidget: React.FC = () => {
   const activeWisdom: DailyWisdom = DAILY_WISDOMS[wisdomIndex] || getWisdomForDate();
 
   // Calculation for today's reading
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = readingDate();
   const todaySessions = readingSessions.filter(s => s.date === todayStr);
   const totalPagesToday = todaySessions.reduce((acc, curr) => acc + curr.pagesRead, 0);
   const targetPages = userProfile.dailyTargetPages || 40;

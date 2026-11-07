@@ -1,59 +1,16 @@
-// Dijital Kütüphanem - Service Worker for Offline PWA & Background Notifications
-
-const CACHE_NAME = 'dijital-kutuphanem-v6';
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/icon.png',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/apple-touch-icon.png',
-  '/favicon.png',
-  '/icon.svg',
-  '/manifest.webmanifest'
-];
-
-// Install Event
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.warn('Precache partial fallback:', err);
-      });
-    })
-  );
-});
-
-// Activate Event
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
-});
+// Event handlers loaded by the generated Workbox service worker.
 
 // Notification Click Handler: Focus or open app
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  const requested = new URL(event.notification.data?.url || '/', self.location.origin);
+  const targetUrl = requested.origin === self.location.origin ? requested.href : self.location.origin;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if ('focus' in client) {
-          if ('navigate' in client && targetUrl !== '/') {
-            client.navigate(targetUrl);
-          }
-          return client.focus();
-        }
+      const client = clientList.find(windowClient => new URL(windowClient.url).origin === self.location.origin);
+      if (client) {
+        return client.navigate(targetUrl).then(navigated => (navigated || client).focus());
       }
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);

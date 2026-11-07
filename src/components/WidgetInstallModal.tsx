@@ -1,3 +1,4 @@
+import { readingDate } from '../utils/readingDate';
 import React, { useState } from 'react';
 import { X, Smartphone, ExternalLink, Copy, Check, Download, Sparkles, BookOpen, Flame, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -25,7 +26,7 @@ export const WidgetInstallModal: React.FC<WidgetInstallModalProps> = ({ isOpen, 
     setTimeout(() => setCopied(false), 2500);
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = readingDate();
   const todayPages = readingSessions
     .filter(s => s.date === todayStr)
     .reduce((sum, s) => sum + s.pagesRead, 0);

@@ -20,6 +20,8 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({ book, onClose,
     updateBookCover,
     setActiveBookForReader,
     attachBookFile,
+    detachBookFile,
+    updateBookLength,
     updateBookTags,
     quotations,
     addQuotation,
@@ -33,6 +35,9 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({ book, onClose,
   const [inlineQuotePage, setInlineQuotePage] = useState<string>('');
   const [inlineQuoteNote, setInlineQuoteNote] = useState<string>('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
+  const [fileMessage, setFileMessage] = useState('');
+  const [pageCount, setPageCount] = useState('');
+  const [isChangingFile, setIsChangingFile] = useState(false);
 
   if (!book) return null;
 
@@ -87,9 +92,14 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({ book, onClose,
     const file = e.target.files?.[0];
     if (file) {
       try {
+        setIsChangingFile(true);
         await attachBookFile(currentBook.id, file);
+        setFileMessage('Dosya bu cihaza kaydedildi.');
       } catch (err) {
-        console.error('File attach error:', err);
+        setFileMessage('Dosya kaydedilemedi. Geçerli bir PDF veya EPUB seç.');
+      } finally {
+        setIsChangingFile(false);
+        e.target.value = '';
       }
     }
   };
@@ -97,7 +107,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({ book, onClose,
   const bookProg = Math.round((currentBook.currentPage / Math.max(1, currentBook.totalPages)) * 100);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+    <div role="dialog" aria-modal="true" aria-label="Kitap ayrıntıları" className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 md:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-black/10 dark:border-white/10 animate-in zoom-in-95 duration-150">
         
         {/* Header */}
@@ -276,7 +286,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({ book, onClose,
             {/* Progress bar */}
             <div className="pt-2">
               <div className="flex justify-between text-xs font-semibold mb-1">
-                <span>Okuma Sayfası: {currentBook.currentPage} / {currentBook.totalPages} Sayfa</span>
+                <span>Okuma Sayfası: {currentBook.currentPage} / {currentBook.totalPages || 'Belirtilmedi'}</span>
                 <span>%{bookProg}</span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
@@ -359,11 +369,12 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({ book, onClose,
 
               <label className="cursor-pointer w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white text-xs font-bold hover:shadow-lg hover:shadow-emerald-900/30 transition-all flex items-center justify-center gap-2 shadow-md border border-emerald-400/30">
                 <Paperclip className="w-4 h-4 text-emerald-200 shrink-0" />
-                <span className="whitespace-nowrap">{currentBook.fileStorageUrl ? 'Dosya Bağlı (Yenile)' : 'PDF/EPUB Yükle'}</span>
+                <span className="whitespace-nowrap">{currentBook.fileStorageUrl || currentBook.fileName ? 'Dosyayı Değiştir' : 'PDF/EPUB Yükle'}</span>
                 <input 
                   type="file"
                   accept=".pdf,.epub"
                   onChange={handleFileUpload}
+                  disabled={isChangingFile}
                   className="hidden"
                 />
               </label>
@@ -380,6 +391,30 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({ book, onClose,
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <form className="flex items-center gap-2" onSubmit={event => {
+            event.preventDefault();
+            updateBookLength(currentBook.id, Number(pageCount));
+            setPageCount('');
+          }}>
+            <input aria-label="Baskının sayfa sayısı" type="number" min={Math.max(1, currentBook.currentPage)} required value={pageCount} onChange={event => setPageCount(event.target.value)} placeholder="Sayfa sayısı" className="w-24 rounded border border-slate-300 bg-transparent p-1.5" />
+            <button type="submit" className="rounded border border-slate-300 p-1.5">Sayfayı kaydet</button>
+          </form>
+          {(currentBook.fileStorageUrl || currentBook.fileName) && <button type="button" disabled={isChangingFile} className="rounded border border-rose-300 p-1.5 text-rose-700 dark:text-rose-300" onClick={async () => {
+            if (!window.confirm('Yalnızca bağlı dosya kaldırılsın mı? Kitap ve ilerleme bilgisi kalır.')) return;
+            setIsChangingFile(true);
+            try {
+              await detachBookFile(currentBook.id);
+              setFileMessage('Bağlı dosya kaldırıldı.');
+            } catch {
+              setFileMessage('Dosya kaldırılamadı. Lütfen yeniden dene.');
+            } finally {
+              setIsChangingFile(false);
+            }
+          }}>Bağlı dosyayı kaldır</button>}
+          {fileMessage && <p role="status" className="w-full">{fileMessage}</p>}
         </div>
 
         {/* Linked Quotes Section */}

@@ -208,223 +208,43 @@ export const JUZ_LIST: JuzInfo[] = Array.from({ length: 30 }, (_, i) => {
 });
 
 // Offline dataset for instant initial render
-export const SAMPLE_VERSES_MAP: { [surahNum: number]: Ayah[] } = {
-  1: [
-    {
-      number: 1,
-      globalNumber: 1,
-      textArabic: 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
-      translationTurkish: 'Rahmân ve Rahîm olan Allah\'ın adıyla.',
-      tafsirTurkish: 'Diyanet Kur\'an Yolu Tefsiri: Besmele, Kur\'an-ı Kerim\'in anahtarıdır. Allah\'ın sonsuz merhametini ve lütfunu ifade eder.',
-      pageNumber: 1,
-      juzNumber: 1,
-      surahNumber: 1,
-      surahName: 'Fâtiha'
-    },
-    {
-      number: 2,
-      globalNumber: 2,
-      textArabic: 'الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ',
-      translationTurkish: 'Hamd (övme ve övülme), âlemlerin Rabbi olan Allah\'a mahsustur.',
-      tafsirTurkish: 'Tüm varlıkların ve alemlerin tek yaratıcısı, rızıklandırıcısı ve idarecisi olan Yüce Allah\'a hamd ve şükredilir.',
-      pageNumber: 1,
-      juzNumber: 1,
-      surahNumber: 1,
-      surahName: 'Fâtiha'
-    },
-    {
-      number: 3,
-      globalNumber: 3,
-      textArabic: 'الرَّحْمَٰنِ الرَّحِيمِ',
-      translationTurkish: 'O, Rahmân\'dır, Rahîm\'dir.',
-      tafsirTurkish: 'Dünyada tüm mahlukata, ahirette ise yalnız müminlere merhamet eden tecelli sahibi.',
-      pageNumber: 1,
-      juzNumber: 1,
-      surahNumber: 1,
-      surahName: 'Fâtiha'
-    },
-    {
-      number: 4,
-      globalNumber: 4,
-      textArabic: 'مَالِكِ يَوْمِ الدِّينِ',
-      translationTurkish: 'Ceza ve mükâfat gününün (hesap gününün) tek sahibidir.',
-      tafsirTurkish: 'Ahiret gününde adaletle hükmedecek ve her amelin karşılığını eksiksiz verecek olan O\'dur.',
-      pageNumber: 1,
-      juzNumber: 1,
-      surahNumber: 1,
-      surahName: 'Fâtiha'
-    },
-    {
-      number: 5,
-      globalNumber: 5,
-      textArabic: 'إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ',
-      translationTurkish: '(Rabbimiz!) Ancak sana kulluk eder ve yalnız senden yardım dileriz.',
-      tafsirTurkish: 'Tevhid inancının özü; ibadeti ve sığınmayı yalnızca Yüce Yaratıcıya tahsis etmektir.',
-      pageNumber: 1,
-      juzNumber: 1,
-      surahNumber: 1,
-      surahName: 'Fâtiha'
-    },
-    {
-      number: 6,
-      globalNumber: 6,
-      textArabic: 'اهْدِنَا الصِّرَاطَ الْمُسْتَقِيمَ',
-      translationTurkish: 'Bizi dosdoğru yola ilet,',
-      tafsirTurkish: 'Sırat-ı Müstakim; Kur\'an ve Peygamber Efendimizin (s.a.v.) rehberlik ettiği hakikat yoludur.',
-      pageNumber: 1,
-      juzNumber: 1,
-      surahNumber: 1,
-      surahName: 'Fâtiha'
-    },
-    {
-      number: 7,
-      globalNumber: 7,
-      textArabic: 'صِرَاطَ الَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ الْمَغْضُوبِ عَلَيْهِمْ وَلَا الضَّالِّينَ',
-      translationTurkish: 'Nimet verdiğin kimselerin yoluna; gazaba uğramışların ve sapmışların yoluna değil! (Âmin)',
-      tafsirTurkish: 'Peygamberlerin, sıddıkların, şehitlerin ve salihlerin izlediği aydınlık yol.',
-      pageNumber: 1,
-      juzNumber: 1,
-      surahNumber: 1,
-      surahName: 'Fâtiha'
-    }
-  ],
-  112: [
-    {
-      number: 1,
-      textArabic: 'قُلْ هُوَ اللَّهُ أَحَدٌ',
-      translationTurkish: 'De ki: "O Allah birdir, tektir."',
-      tafsirTurkish: 'İhlas suresi, tevhid inancını en öz ve katıksız haliyle açıklar.',
-      pageNumber: 604,
-      juzNumber: 30,
-      surahNumber: 112,
-      surahName: 'İhlâs'
-    },
-    {
-      number: 2,
-      textArabic: 'اللَّهُ الصَّمَدُ',
-      translationTurkish: 'Allah Samed\'dir (her şey O\'na muhtaçtır, O hiçbir şeye muhtaç değildir).',
-      tafsirTurkish: 'Samed; eksiksiz, muhtaç olmayan, her mahlukun kendisine yöneldiği tek mercidir.',
-      pageNumber: 604,
-      juzNumber: 30,
-      surahNumber: 112,
-      surahName: 'İhlâs'
-    },
-    {
-      number: 3,
-      textArabic: 'لَمْ يَلِدْ وَلَمْ يُولَدْ',
-      translationTurkish: 'O, doğurmamış ve doğurulmamıştır.',
-      tafsirTurkish: 'Cenâb-ı Hak zamandan, mekândan, nesep ve nesilden münezzehtir.',
-      pageNumber: 604,
-      juzNumber: 30,
-      surahNumber: 112,
-      surahName: 'İhlâs'
-    },
-    {
-      number: 4,
-      textArabic: 'وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ',
-      translationTurkish: 'Hiçbir şey O\'nun dengi ve benzeri değildir.',
-      tafsirTurkish: 'O\'nun zâtında, sıfatlarında ve fiillerinde hiçbir dengi bulunmaz.',
-      pageNumber: 604,
-      juzNumber: 30,
-      surahNumber: 112,
-      surahName: 'İhlâs'
-    }
-  ]
-};
 
-// AlQuran.cloud API fetcher for Arabic Uthmani text and Diyanet Turkish meal
-export async function fetchSurahVerses(surahNum: number): Promise<Ayah[]> {
-  if (SAMPLE_VERSES_MAP[surahNum]) {
-    const sample = SAMPLE_VERSES_MAP[surahNum];
-    fetchRemoteSurah(surahNum).catch(() => {});
-    return sample;
-  }
+// Match translations by the API's global verse number, not by array position.
+async function fetchVerses(path: string, signal?: AbortSignal): Promise<Ayah[]> {
+  const response = await fetch(`https://api.alquran.cloud/v1/${path}/editions/quran-uthmani,tr.diyanet`, { signal });
+  if (!response.ok) throw new Error('Ayet servisine erişilemedi.');
+  const result = await response.json();
+  const arabic = result.data?.find((item: { edition?: { identifier?: string } }) => item.edition?.identifier === 'quran-uthmani');
+  const translation = result.data?.find((item: { edition?: { identifier?: string } }) => item.edition?.identifier === 'tr.diyanet');
+  if (!Array.isArray(arabic?.ayahs) || arabic.ayahs.length === 0) throw new Error('Ayet servisi geçerli bir metin göndermedi.');
+  const translatedVerses = new Map<number, string>((translation?.ayahs ?? []).map((verse: { number: number; text: string }) => [verse.number, verse.text]));
 
-  return fetchRemoteSurah(surahNum);
+  return arabic.ayahs.map((verse: {
+    number: number; numberInSurah: number; text: string; page: number; juz: number; hizbQuarter?: number; surah?: { number: number };
+  }): Ayah => {
+    const surahNumber = verse.surah?.number || arabic.number;
+    const metadata = ALL_SURAHS.find(surah => surah.number === surahNumber);
+    if (!metadata || typeof verse.text !== 'string' || !verse.text.trim() || !Number.isInteger(verse.numberInSurah)) {
+      throw new Error('Ayet servisi eksik metin veya sûre bilgisi gönderdi.');
+    }
+    return {
+      number: verse.numberInSurah,
+      globalNumber: verse.number,
+      textArabic: verse.text,
+      translationTurkish: translatedVerses.get(verse.number) || '',
+      pageNumber: verse.page,
+      juzNumber: verse.juz,
+      hizbNumber: verse.hizbQuarter ? Math.ceil(verse.hizbQuarter / 4) : undefined,
+      surahNumber,
+      surahName: metadata.nameTurkish,
+    };
+  });
 }
 
-async function fetchRemoteSurah(surahNum: number): Promise<Ayah[]> {
-  try {
-    const surahMeta = ALL_SURAHS.find(s => s.number === surahNum) || ALL_SURAHS[0];
-    const res = await fetch(`https://api.alquran.cloud/v1/surah/${surahNum}/editions/quran-uthmani,tr.diyanet`);
-    
-    if (!res.ok) throw new Error("API request failed");
-    
-    const data = await res.json();
-    if (!data || !data.data || data.data.length < 2) throw new Error("Invalid API response format");
-
-    const uthmaniEdition = data.data[0];
-    const diyanetEdition = data.data[1];
-
-    const ayahs: Ayah[] = uthmaniEdition.ayahs.map((a: any, idx: number) => {
-      const diyanetAyah = diyanetEdition.ayahs[idx];
-      return {
-        number: a.numberInSurah,
-        globalNumber: a.number,
-        textArabic: a.text,
-        translationTurkish: diyanetAyah ? diyanetAyah.text : '',
-        tafsirTurkish: `Diyanet Kur'an Yolu Tefsiri (${surahMeta.nameTurkish} Sûresi, ${a.numberInSurah}. Âyet): Yüce Allah buyuruyor ki; bu âyet-i kerimede hakikatin ve ilahî beyanın hikmetleri açıklanmaktadır. Kur'an Yolu tefsirine Diyanet portalından erişilebilir.`,
-        pageNumber: a.page || surahMeta.startPage,
-        juzNumber: a.juz || surahMeta.juzNumber,
-        hizbNumber: a.hizbQuarter ? Math.ceil(a.hizbQuarter / 4) : undefined,
-        surahNumber: surahNum,
-        surahName: surahMeta.nameTurkish
-      };
-    });
-
-    return ayahs;
-  } catch (err) {
-    console.warn(`Fallback to synthetic verse generation for surah ${surahNum}:`, err);
-    const surahMeta = ALL_SURAHS.find(s => s.number === surahNum) || ALL_SURAHS[0];
-    
-    return Array.from({ length: Math.min(surahMeta.verseCount, 30) }, (_, i) => ({
-      number: i + 1,
-      textArabic: `بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ — Âyet ${i + 1}`,
-      translationTurkish: `${surahMeta.nameTurkish} Sûresi, ${i + 1}. Âyet Meali (Diyanet Kur'an Yolu).`,
-      tafsirTurkish: `Diyanet Kur'an Yolu Tefsiri: ${surahMeta.nameTurkish} sûresi ${i + 1}. âyetin hikmet ve tefsir açıklamaları.`,
-      pageNumber: surahMeta.startPage + Math.floor(i / 15),
-      juzNumber: surahMeta.juzNumber,
-      surahNumber: surahNum,
-      surahName: surahMeta.nameTurkish
-    }));
-  }
+export function fetchSurahVerses(surahNumber: number, signal?: AbortSignal): Promise<Ayah[]> {
+  return fetchVerses(`surah/${surahNumber}`, signal);
 }
 
-export async function fetchPageVerses(pageNumber: number): Promise<Ayah[]> {
-  try {
-    const res = await fetch(`https://api.alquran.cloud/v1/page/${pageNumber}/editions/quran-uthmani,tr.diyanet`);
-    if (!res.ok) throw new Error("API request failed");
-    const data = await res.json();
-    if (!data || !data.data || data.data.length < 2) throw new Error("Invalid API response");
-
-    const uthmaniEdition = data.data[0];
-    const diyanetEdition = data.data[1];
-
-    return uthmaniEdition.ayahs.map((a: any, idx: number) => {
-      const diyanetAyah = diyanetEdition.ayahs[idx];
-      return {
-        number: a.numberInSurah,
-        globalNumber: a.number,
-        textArabic: a.text,
-        translationTurkish: diyanetAyah ? diyanetAyah.text : '',
-        tafsirTurkish: `Diyanet Kur'an Yolu Tefsiri (${a.surah.name} Sûresi, ${a.numberInSurah}. Âyet)`,
-        pageNumber: pageNumber,
-        juzNumber: a.juz,
-        surahNumber: a.surah.number,
-        surahName: a.surah.name
-      };
-    });
-  } catch (err) {
-    console.warn(`Fallback page verses for page ${pageNumber}:`, err);
-    if (pageNumber === 1 && SAMPLE_VERSES_MAP[1]) return SAMPLE_VERSES_MAP[1];
-    return Array.from({ length: 7 }, (_, i) => ({
-      number: i + 1,
-      textArabic: `بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ — الصفحة ${pageNumber} (Âyet ${i + 1})`,
-      translationTurkish: `Sayfa ${pageNumber}, Âyet ${i + 1} Meali (Diyanet Kur'an Yolu).`,
-      pageNumber: pageNumber,
-      juzNumber: Math.ceil(pageNumber / 20),
-      surahNumber: 1,
-      surahName: 'Fâtiha'
-    }));
-  }
+export function fetchPageVerses(pageNumber: number, signal?: AbortSignal): Promise<Ayah[]> {
+  return fetchVerses(`page/${pageNumber}`, signal);
 }

@@ -1,14 +1,31 @@
 import { initializeApp } from 'firebase/app';
+import type { FirebaseOptions } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore, setLogLevel, disableNetwork } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
 
 // Silence verbose internal Firebase SDK warning logs during temporary quota exhaustion
 setLogLevel('silent');
 
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+function readCloudConfig(): (FirebaseOptions & { firestoreDatabaseId?: string }) | undefined {
+  try {
+    const raw = import.meta.env.VITE_DK_FIREBASE_CONFIG;
+    if (!raw) return;
+    const config = JSON.parse(raw);
+    if (['apiKey', 'appId', 'authDomain', 'projectId'].every(key => typeof config?.[key] === 'string' && config[key].trim())) return config;
+  } catch {
+    console.warn('Firebase test yapılandırması geçersiz. Yerel mod etkin.');
+  }
+}
+
+const cloudConfig = readCloudConfig();
+export const cloudEnabled = !!cloudConfig;
+const app = initializeApp(cloudConfig || {
+  apiKey: 'dijital-kutuphanem-local-only',
+  appId: '1:1:web:local-only',
+  projectId: 'demo-dijital-kutuphanem',
+}, cloudEnabled ? 'dk-configured-cloud' : 'dk-local-only');
+export const db = cloudConfig?.firestoreDatabaseId ? getFirestore(app, cloudConfig.firestoreDatabaseId) : getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
@@ -19,6 +36,7 @@ export function handleQuotaExhaustion() {
 
 
 export async function loginWithGoogle() {
+  if (!cloudEnabled) throw new Error('Bu sürüm yerel modda. Google ile giriş için ayrı bir Firebase projesi yapılandırılmalı.');
   try {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;

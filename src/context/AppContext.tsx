@@ -1,11 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { readingDate } from '../utils/readingDate';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, query, where, writeBatch } from 'firebase/firestore';
 import { BookReview, MainTab, Quotation, ReadingSession, UserBook, UserProfile, VocabularyItem, QuranProgress, AppNotification, Badge } from '../types';
-import { DEFAULT_USER_BOOKS, DEFAULT_BOOK_COVERS, MAIN_CATEGORIES, inferCategoryForBook } from '../data/catalogData';
-import { auth, db } from '../lib/firebase';
-import { saveBookFileToIDB, getBookFileFromIDB, saveCoverToIDB, getCoverFromIDB, saveAppDataToIDB, getAppDataFromIDB, deleteBookDataFromIDB } from '../lib/indexedDb';
-import { validateBackupJSON, ValidationResult } from '../lib/jsonValidator';
+import { DEFAULT_BOOK_COVERS, MAIN_CATEGORIES, inferCategoryForBook } from '../data/catalogData';
+import { auth, cloudEnabled, db } from '../lib/firebase';
+import { saveBookFileToIDB, deleteBookFileFromIDB, getBookFileFromIDB, saveCoverToIDB, getCoverFromIDB, saveAppDataToIDB, saveAppDataBatchToIDB, getAppDataFromIDB, deleteBookDataFromIDB } from '../lib/indexedDb';
+import { validateBackupJSON, ValidationResult, BackupPayload } from '../lib/jsonValidator';
 import { AVAILABLE_BADGES } from '../data/badgeData';
 
 interface AppContextType {
@@ -49,17 +50,20 @@ interface AppContextType {
   // Quran Module State & Handlers
   quranProgress: QuranProgress;
   updateQuranProgress: (patch: Partial<QuranProgress>) => void;
+  recordMushafPage: (page: number) => void;
   bookmarkAyah: (surahNumber: number, ayahNumber: number) => void;
   toggleFavoriteAyah: (fav: { surahNumber: number; ayahNumber: number; textArabic: string; translationTurkish: string; createdAt: string }) => void;
   saveAyahNote: (surahNumber: number, ayahNumber: number, noteText: string) => void;
 
   // Book Handlers & Cover Manager
   addBookToLibrary: (bookData: Omit<UserBook, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  updateBookProgress: (bookId: string, newPage: number) => void;
+  updateBookProgress: (bookId: string, newPage: number, fileLength?: number) => void;
+  updateBookLength: (bookId: string, pageCount: number) => void;
   updateBookStatus: (bookId: string, status: UserBook['status']) => void;
   deleteBookFromLibrary: (bookId: string) => void;
   logReadingSession: (bookId: string, pagesRead: number) => void;
   attachBookFile: (bookId: string, fileBlob: File) => Promise<string>;
+  detachBookFile: (bookId: string) => Promise<void>;
   updateBookCover: (bookId: string, newCoverUrl: string, source?: string, confidence?: number) => void;
   updateBookTags: (bookId: string, tags: string[]) => void;
 
@@ -81,6 +85,24 @@ interface AppContextType {
   setNewBadgeNotification: React.Dispatch<React.SetStateAction<Badge | null>>;
   clearBadgeNotification: () => void;
   deduplicateBooks: () => number;
+}
+
+function mergeCloudRecords<T extends { id: string; updatedAt?: string; createdAt?: string }>(
+  local: T[], incoming: T[], merge: (current: T, next: T) => T = (_, next) => next,
+): T[] {
+  const remote = new Map(incoming.map(item => [item.id, item]));
+  let changed = false;
+  const merged = local.map(item => {
+    const next = remote.get(item.id);
+    if (!next) return item;
+    remote.delete(item.id);
+    const currentTime = item.updatedAt || item.createdAt || '';
+    const nextTime = next.updatedAt || next.createdAt || '';
+    if (nextTime <= currentTime) return item;
+    changed = true;
+    return merge(item, next);
+  });
+  return changed || remote.size ? [...merged, ...remote.values()] : local;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -110,55 +132,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('offline');
   const [isHydrated, setIsHydrated] = useState<boolean>(false);
 
-  // Helper for safe LocalStorage operations without unhandled QuotaExceededError exceptions
-  const safeLocalStorageSet = (key: string, value: any) => {
+  const booksForStorage = (books: UserBook[]) => books.map(book => {
+    const { fileData, fileStorageUrl, ...record } = book;
+    return {
+      ...record,
+      ...(typeof fileStorageUrl === 'string' && !fileStorageUrl.startsWith('blob:') ? { fileStorageUrl } : {}),
+      coverUrl: record.coverUrl?.startsWith('blob:') ? '' : record.coverUrl,
+    };
+  });
+
+  const mirrorLocalStorage = (key: string, value: unknown) => {
     try {
-      let payload = value;
-      if (key === 'dk_user_books' && Array.isArray(value)) {
-        payload = value.map((b: any) => {
-          if (!b || typeof b !== 'object') return b;
-          const copy = { ...b };
-          delete copy.fileData;
-          delete copy.fileStorageUrl;
-          // Keep all HTTP/HTTPS cover URLs intact! Only strip massive base64 URIs (>10KB) because IDB stores them.
-          if (typeof copy.coverUrl === 'string' && copy.coverUrl.startsWith('data:') && copy.coverUrl.length > 10000) {
-            copy.coverUrl = ''; 
-          }
-          return copy;
-        });
-      }
+      const payload = key === 'dk_user_books' && Array.isArray(value)
+        ? value.map(book => typeof book.coverUrl === 'string' && book.coverUrl.startsWith('data:') && book.coverUrl.length > 10000
+          ? { ...book, coverUrl: '' } : book)
+        : value;
       localStorage.setItem(key, JSON.stringify(payload));
-      saveAppDataToIDB(key, payload);
     } catch {
-      // LocalStorage quota fallback: keep metadata and valid URLs intact
-      try {
-        if (key === 'dk_user_books' && Array.isArray(value)) {
-          const minimal = value.map((b: any) => {
-            const copy = { ...b };
-            delete copy.fileData;
-            delete copy.fileStorageUrl;
-            if (typeof copy.coverUrl === 'string' && copy.coverUrl.startsWith('data:')) {
-              copy.coverUrl = '';
-            }
-            return copy;
-          });
-          localStorage.setItem(key, JSON.stringify(minimal));
-          saveAppDataToIDB(key, minimal);
-        }
-      } catch {}
+      // IndexedDB remains the primary copy if the local mirror reaches its quota.
     }
   };
 
-
-
+  const safeLocalStorageSet = (key: string, value: unknown) => {
+    const durable = key === 'dk_user_books' && Array.isArray(value) ? booksForStorage(value) : value;
+    mirrorLocalStorage(key, durable);
+    saveAppDataToIDB(key, durable).catch(error => console.warn('IndexedDB write failed:', error));
+  };
 
   // Load state from localStorage on init with safe error fallback
   const [userBooks, setUserBooks] = useState<UserBook[]>(() => {
     try {
       const saved = localStorage.getItem('dk_user_books');
-      return saved ? JSON.parse(saved) : DEFAULT_USER_BOOKS;
+      const books = saved ? JSON.parse(saved) : [];
+      return Array.isArray(books) ? books : [];
     } catch {
-      return DEFAULT_USER_BOOKS;
+      return [];
     }
   });
 
@@ -167,27 +175,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const saved = localStorage.getItem('dk_reading_sessions');
       if (saved) return JSON.parse(saved);
     } catch {}
-    const todayStr = new Date().toISOString().split('T')[0];
-    return [
-      {
-        id: 'rs-1',
-        bookId: 'ub-1',
-        bookTitle: 'Saatleri Ayarlama Enstitüsü',
-        date: todayStr,
-        pagesRead: 15,
-        isMultiVolume: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 'rs-2',
-        bookId: 'ub-2',
-        bookTitle: "İhyâu 'Ulûmi'd-Dîn (1. Cilt)",
-        date: todayStr,
-        pagesRead: 18,
-        isMultiVolume: true,
-        createdAt: new Date().toISOString()
-      }
-    ];
+    return [];
   });
 
   const [reviews, setReviews] = useState<BookReview[]>(() => {
@@ -195,18 +183,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const saved = localStorage.getItem('dk_reviews');
       if (saved) return JSON.parse(saved);
     } catch {}
-    return [
-      {
-        id: 'rev-1',
-        bookId: 'ub-3',
-        bookTitle: 'Bu Ülke',
-        author: 'Cemil Meriç',
-        rating: 5,
-        content: "Cemil Meriç'in kaleme aldığı 'Bu Ülke', Türk aydınının kimlik arayışını ve fikir çilelerini tarafsızca ortaya koyan eşsiz bir klasiktir.",
-        createdAt: '2026-09-21T12:00:00.000Z',
-        updatedAt: '2026-09-21T12:00:00.000Z'
-      }
-    ];
+    return [];
   });
 
   const [quotations, setQuotations] = useState<Quotation[]>(() => {
@@ -214,30 +191,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const saved = localStorage.getItem('dk_quotations');
       if (saved) return JSON.parse(saved);
     } catch {}
-    return [
-      {
-        id: 'q-1',
-        bookId: 'ub-3',
-        bookTitle: 'Bu Ülke',
-        author: 'Cemil Meriç',
-        pageNumber: 42,
-        quoteText: 'Kamus, bir milletin namusudur.',
-        userNote: 'Dil bilinci ve kültür muhafazası üzerine kilit söz.',
-        tags: ['Dil', 'Kültür'],
-        createdAt: '2026-09-10T14:00:00.000Z'
-      },
-      {
-        id: 'q-2',
-        bookId: 'ub-1',
-        bookTitle: 'Saatleri Ayarlama Enstitüsü',
-        author: 'Ahmet Hamdi Tanpınar',
-        pageNumber: 115,
-        quoteText: 'Saat, zamanın kendisi değil, onun ölçüsüdür.',
-        userNote: 'Zaman idraki üzerine mükemmel bir cümle.',
-        tags: ['Zaman', 'Felsefe'],
-        createdAt: '2026-10-20T09:30:00.000Z'
-      }
-    ];
+    return [];
   });
 
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>(() => {
@@ -245,26 +199,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const saved = localStorage.getItem('dk_vocabulary');
       if (saved) return JSON.parse(saved);
     } catch {}
-    return [
-      {
-        id: 'v-1',
-        word: 'Tefekkür',
-        meaning: 'Belli bir mesele üzerinde derinlemesine düşünme, zihni yorma.',
-        sourceBookTitle: "İhyâu 'Ulûmi'd-Dîn",
-        exampleSentence: 'Gazâli, ilmin meyvesinin tefekkür olduğunu belirtir.',
-        isLearned: true,
-        createdAt: '2026-10-02T10:00:00.000Z'
-      },
-      {
-        id: 'v-2',
-        word: 'Hars',
-        meaning: 'Kültür, bir cemiyetin sahip olduğu manevi değerlerin bütünü.',
-        sourceBookTitle: 'Kültür ve Medeniyet',
-        exampleSentence: 'Ziya Gökalp gars ile medeniyeti ayrıştırır.',
-        isLearned: false,
-        createdAt: '2026-10-18T16:20:00.000Z'
-      }
-    ];
+    return [];
   });
 
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
@@ -274,14 +209,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
     return {
       displayName: 'Kütüphane Okuru',
-      email: 'okur@dijitalkutuphanem.com',
+      email: '',
       dailyTargetPages: 40,
       singleVolumeTargetPages: 20,
       multiVolumeTargetPages: 20,
       autoBackupEnabled: true,
       theme: 'light',
       joinedDate: '2026-01-01',
-      reminderEnabled: true,
+      reminderEnabled: false,
       reminderTimes: ['08:30', '14:00', '21:30'],
       reminderSound: true,
       badges: []
@@ -289,55 +224,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   // Notifications State & Logic
-  const DEFAULT_INITIAL_NOTIFICATIONS: AppNotification[] = [
-    {
-      id: 'notif-1',
-      title: '📖 Günlük Okuma Hatırlatıcı',
-      message: 'Bugünkü 40 sayfa okuma hedefinize henüz ulaşmadınız. Kütüphanenizdeki kitaba devam edin.',
-      time: 'Bugün 08:30',
-      isRead: false,
-      type: 'reminder',
-      linkTab: 'library',
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: 'notif-2',
-      title: '🌙 Kur\'an-ı Kerim Hatim İlerlemesi',
-      message: '14. Hizb okuma aşamasındasınız. Bugünkü cüz/sayfa hedefinizi tamamlamak için Kur\'an bölümünü açın.',
-      time: 'Bugün 14:00',
-      isRead: false,
-      type: 'milestone',
-      linkTab: 'explore',
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: 'notif-3',
-      title: '✨ Günün Hikmetli Sözü',
-      message: 'Bediüzzaman Said Nursi: "Güzel gören güzel düşünür, güzel düşünen hayatından lezzet alır."',
-      time: 'Dün 21:00',
-      isRead: false,
-      type: 'wisdom',
-      linkTab: 'today',
-      createdAt: new Date(Date.now() - 86400000).toISOString()
-    },
-    {
-      id: 'notif-4',
-      title: '🚀 Sistem Güncellemesi',
-      message: 'Google Görseller kapak arama 🔍 ve canlı bildirim kutusu aktif edildi!',
-      time: '2 gün önce',
-      isRead: true,
-      type: 'system',
-      linkTab: 'today',
-      createdAt: new Date(Date.now() - 172800000).toISOString()
-    }
-  ];
-
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     try {
       const saved = localStorage.getItem('dk_notifications');
       if (saved) return JSON.parse(saved);
     } catch {}
-    return DEFAULT_INITIAL_NOTIFICATIONS;
+    return [];
   });
 
   useEffect(() => {
@@ -410,14 +302,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastReadSurah: 1,
       lastReadAyah: 1,
       lastReadPage: 1,
-      completedJuzs: [1, 2],
-      pagesReadToday: 5,
-      versesReadToday: 20,
-      completedHatimCount: 1,
+      completedJuzs: [],
+      pagesReadToday: 0,
+      versesReadToday: 0,
+      completedHatimCount: 0,
       dailyHizbGoal: 1,
       dailyPageGoal: 20,
-      readingCalendar: { [new Date().toISOString().split('T')[0]]: 5 },
-      bookmarkedAyahs: [{ surahNumber: 1, ayahNumber: 1, createdAt: new Date().toISOString() }],
+      readingCalendar: {},
+      bookmarkedAyahs: [],
       favoriteAyahs: [],
       ayahNotes: {}
     };
@@ -426,7 +318,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeBookForReader, setActiveBookForReaderState] = useState<UserBook | null>(null);
   const [selectedBookForDetail, setSelectedBookForDetail] = useState<UserBook | null>(null);
 
+  const readerRequest = useRef(0);
   const setActiveBookForReader = async (book: UserBook | null) => {
+    const request = ++readerRequest.current;
     if (!book) {
       setActiveBookForReaderState(null);
       return;
@@ -452,25 +346,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       totalPages: Math.max(latestBook.totalPages || 1, savedPage)
     };
     
-    try {
-      const idbFile = await getBookFileFromIDB(latestBook.id);
-      if (idbFile) {
-        const updated: UserBook = {
-          ...bookWithPage,
-          fileStorageUrl: idbFile.objectUrl,
-          fileName: idbFile.fileName,
-          fileType: idbFile.fileType
-        };
-        setActiveBookForReaderState(updated);
-        setUserBooks(prev => prev.map(b => b.id === latestBook.id ? updated : b));
-      } else {
-        setActiveBookForReaderState(bookWithPage);
-      }
-    } catch {
-      setActiveBookForReaderState(bookWithPage);
+    const idbFile = await getBookFileFromIDB(latestBook.id);
+    if (readerRequest.current !== request) {
+      if (idbFile) URL.revokeObjectURL(idbFile.objectUrl);
+      return;
     }
+    lastReadPages.current.set(book.id, bookWithPage.currentPage);
+    setActiveBookForReaderState(idbFile ? {
+      ...bookWithPage,
+      fileStorageUrl: idbFile.objectUrl,
+      fileName: idbFile.fileName,
+      fileType: idbFile.fileType,
+    } : bookWithPage);
   };
-  
+
   // Persistence Guard: Only save to storage after initial hydration is complete
   useEffect(() => {
     if (!isHydrated) return;
@@ -521,7 +410,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           savedQuotes, 
           savedVocab, 
           savedQuran,
-          savedNotifs
+          savedNotifs,
+          savedProfile
         ] = await Promise.all([
           getAppDataFromIDB('dk_user_books'),
           getAppDataFromIDB('dk_reading_sessions'),
@@ -529,16 +419,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           getAppDataFromIDB('dk_quotations'),
           getAppDataFromIDB('dk_vocabulary'),
           getAppDataFromIDB('dk_quran_progress'),
-          getAppDataFromIDB('dk_notifications')
+          getAppDataFromIDB('dk_notifications'),
+          getAppDataFromIDB('dk_user_profile')
         ]);
 
-        if (Array.isArray(savedBooks) && savedBooks.length > 0) setUserBooks(savedBooks);
+        if (Array.isArray(savedBooks)) setUserBooks(savedBooks);
         if (Array.isArray(savedSessions)) setReadingSessions(savedSessions);
         if (Array.isArray(savedReviews)) setReviews(savedReviews);
         if (Array.isArray(savedQuotes)) setQuotations(savedQuotes);
         if (Array.isArray(savedVocab)) setVocabulary(savedVocab);
         if (savedQuran && typeof savedQuran === 'object') setQuranProgress(savedQuran);
         if (Array.isArray(savedNotifs)) setNotifications(savedNotifs);
+        if (savedProfile && typeof savedProfile === 'object') {
+          setUserProfile(previous => ({ ...previous, ...savedProfile }));
+        }
 
         // Mark as hydrated so future state changes trigger saves
         setIsHydrated(true);
@@ -614,103 +508,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [userBooks, readingSessions, isHydrated]);
 
-  // Automatic one-time deduplication upon hydration
   useEffect(() => {
-    if (isHydrated && userBooks.length > 1) {
-      deduplicateBooks();
-    }
-  }, [isHydrated]);
-
-
-  // Firebase Auth & Realtime Firestore Synchronization
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      if (user) {
-        setCloudSyncStatus('syncing');
-        setUserProfile(prev => ({
-          ...prev,
-          uid: user.uid,
-          displayName: user.displayName || prev.displayName,
-          email: user.email || prev.email,
-          photoURL: user.photoURL || prev.photoURL
-        }));
-
-        // Attach Firestore Listeners with safe, non-destructive merging
-        const qBooks = query(collection(db, 'userBooks'), where('userId', '==', user.uid));
-        const unsubBooks = onSnapshot(qBooks, snapshot => {
-          if (!snapshot.empty) {
-            const cloudBooks = snapshot.docs.map(doc => doc.data() as UserBook);
-            setUserBooks(prev => {
-              if (prev.length === 0) return cloudBooks;
-              const existingIds = new Set(prev.map(b => b.id));
-              const missingFromLocal = cloudBooks.filter(cb => !existingIds.has(cb.id));
-              return missingFromLocal.length > 0 ? [...prev, ...missingFromLocal] : prev;
-            });
-          }
-          setCloudSyncStatus('synced');
-        }, err => {
-          console.warn("userBooks snapshot status:", err);
-          setCloudSyncStatus('offline');
-        });
-
-        const qSessions = query(collection(db, 'readingSessions'), where('userId', '==', user.uid));
-        const unsubSessions = onSnapshot(qSessions, snapshot => {
-          if (!snapshot.empty) {
-            const cloudSessions = snapshot.docs.map(doc => doc.data() as ReadingSession);
-            setReadingSessions(prev => {
-              const existingIds = new Set(prev.map(s => s.id));
-              const missingFromLocal = cloudSessions.filter(cs => !existingIds.has(cs.id));
-              return missingFromLocal.length > 0 ? [...prev, ...missingFromLocal] : prev;
-            });
-          }
-        }, err => {
-          console.warn("readingSessions snapshot status:", err);
-        });
-
-        const qQuotes = query(collection(db, 'quotations'), where('userId', '==', user.uid));
-        const unsubQuotes = onSnapshot(qQuotes, snapshot => {
-          if (!snapshot.empty) {
-            const cloudQuotes = snapshot.docs.map(doc => doc.data() as Quotation);
-            setQuotations(prev => {
-              const existingIds = new Set(prev.map(q => q.id));
-              const missingFromLocal = cloudQuotes.filter(cq => !existingIds.has(cq.id));
-              return missingFromLocal.length > 0 ? [...prev, ...missingFromLocal] : prev;
-            });
-          }
-        }, err => {
-          console.warn("quotations snapshot status:", err);
-        });
-
-        const qWords = query(collection(db, 'vocabulary'), where('userId', '==', user.uid));
-        const unsubWords = onSnapshot(qWords, snapshot => {
-          if (!snapshot.empty) {
-            const cloudWords = snapshot.docs.map(doc => doc.data() as VocabularyItem);
-            setVocabulary(prev => {
-              const existingIds = new Set(prev.map(v => v.id));
-              const missingFromLocal = cloudWords.filter(cw => !existingIds.has(cw.id));
-              return missingFromLocal.length > 0 ? [...prev, ...missingFromLocal] : prev;
-            });
-          }
-        }, err => {
-          console.warn("vocabulary snapshot status:", err);
-        });
-
-        return () => {
-          unsubBooks();
-          unsubSessions();
-          unsubQuotes();
-          unsubWords();
-        };
-      } else {
-        setCloudSyncStatus('offline');
-      }
-    });
-
-    return () => unsubscribeAuth();
+    if (cloudEnabled) return onAuthStateChanged(auth, setCurrentUser);
   }, []);
 
-  // We remove the direct sync effects from here as they are now consolidated above with isHydrated guard
+  // Subscribe after local hydration and replace listeners when the account changes.
+  useEffect(() => {
+    if (!currentUser) {
+      setCloudSyncStatus('offline');
+      return;
+    }
+    if (!isHydrated) return;
+    const uid = currentUser.uid;
+    setCloudSyncStatus('syncing');
+    setUserProfile(previous => ({
+      ...previous,
+      uid,
+      displayName: currentUser.displayName || previous.displayName,
+      email: currentUser.email || previous.email,
+      photoURL: currentUser.photoURL || previous.photoURL,
+    }));
+
+    const watchCollection = <T,>(name: string, onRecords: (records: T[]) => void, onServerSnapshot?: () => void) =>
+      onSnapshot(query(collection(db, name), where('userId', '==', uid)), { includeMetadataChanges: true }, snapshot => {
+        if (auth.currentUser?.uid !== uid) return;
+        onRecords(snapshot.docs.map(record => ({ ...record.data(), id: record.data().id || record.id }) as T));
+        if (!snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites) onServerSnapshot?.();
+      }, error => {
+        console.warn('Firestore listener failed:', name, error.code);
+        setCloudSyncStatus('error');
+      });
+
+    const unsubBooks = watchCollection<UserBook>('userBooks', books => setUserBooks(local => mergeCloudRecords(local, books, (current, next) => ({
+      ...current,
+      ...next,
+      coverUrl: next.coverUrl || current.coverUrl,
+      fileStorageUrl: current.fileStorageUrl || next.fileStorageUrl,
+    }))), () => setCloudSyncStatus(status => status === 'error' ? status : 'synced'));
+    const unsubSessions = watchCollection<ReadingSession>('readingSessions', items => setReadingSessions(local => mergeCloudRecords(local, items)));
+    const unsubReviews = watchCollection<BookReview>('reviews', items => setReviews(local => mergeCloudRecords(local, items)));
+    const unsubQuotes = watchCollection<Quotation>('quotations', items => setQuotations(local => mergeCloudRecords(local, items)));
+    const unsubWords = watchCollection<VocabularyItem>('vocabulary', items => setVocabulary(local => mergeCloudRecords(local, items)));
+    const unsubQuran = onSnapshot(doc(db, 'quranProgress', uid), snapshot => {
+      if (auth.currentUser?.uid !== uid || !snapshot.exists()) return;
+      const remote = snapshot.data() as QuranProgress;
+      setQuranProgress(local => {
+        if (remote.updatedAt && remote.updatedAt > (local.updatedAt || '')) return { ...local, ...remote };
+        if (!remote.updatedAt && !local.updatedAt && !Object.keys(local.readingCalendar || {}).length) return { ...local, ...remote };
+        return local;
+      });
+    }, error => {
+      console.warn('Kur’an eşitlemesi başarısız:', error.code);
+      setCloudSyncStatus('error');
+    });
+
+    return () => {
+      unsubBooks();
+      unsubSessions();
+      unsubReviews();
+      unsubQuotes();
+      unsubWords();
+      unsubQuran();
+    };
+  }, [currentUser, isHydrated]);
 
   // Helper function to sanitize any object for Firestore (removes undefined fields)
   const cleanForFirestore = (obj: any): any => {
@@ -761,10 +621,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Quran Handlers
   const updateQuranProgress = (patch: Partial<QuranProgress>) => {
     setQuranProgress(prev => {
-      const updated = { ...prev, ...patch };
+      const updated = { ...prev, ...patch, updatedAt: new Date().toISOString() };
+      if (typeof patch.pagesReadToday === 'number') {
+        updated.readingCalendar = { ...prev.readingCalendar, ...patch.readingCalendar, [readingDate()]: patch.pagesReadToday };
+      }
       if (auth.currentUser) {
         safeFirestoreSet(doc(db, 'quranProgress', auth.currentUser.uid), updated);
       }
+      return updated;
+    });
+  };
+
+  const recordMushafPage = (page: number) => {
+    if (!Number.isInteger(page) || page < 1 || page > 604) return;
+    const date = readingDate();
+    setQuranProgress(previous => {
+      const pages = previous.markedMushafPages?.date === date ? previous.markedMushafPages.pages : [];
+      if (pages.includes(page)) return previous;
+      const pagesReadToday = (previous.readingCalendar?.[date] || 0) + 1;
+      const updated = {
+        ...previous, lastReadPage: page, pagesReadToday,
+        readingCalendar: { ...previous.readingCalendar, [date]: pagesReadToday },
+        markedMushafPages: { date, pages: [...pages, page] },
+        updatedAt: new Date().toISOString(),
+      };
+      if (auth.currentUser) safeFirestoreSet(doc(db, 'quranProgress', auth.currentUser.uid), updated);
       return updated;
     });
   };
@@ -777,7 +658,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? bookmarked.filter(b => !(b.surahNumber === surahNumber && b.ayahNumber === ayahNumber))
         : [...bookmarked, { surahNumber, ayahNumber, createdAt: new Date().toISOString() }];
 
-      const newProg = { ...prev, bookmarkedAyahs: updated };
+      const newProg = { ...prev, bookmarkedAyahs: updated, updatedAt: new Date().toISOString() };
       if (auth.currentUser) {
         safeFirestoreSet(doc(db, 'quranProgress', auth.currentUser.uid), newProg);
       }
@@ -793,7 +674,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? favs.filter(f => !(f.surahNumber === fav.surahNumber && f.ayahNumber === fav.ayahNumber))
         : [fav, ...favs];
 
-      const newProg = { ...prev, favoriteAyahs: updated };
+      const newProg = { ...prev, favoriteAyahs: updated, updatedAt: new Date().toISOString() };
       if (auth.currentUser) {
         safeFirestoreSet(doc(db, 'quranProgress', auth.currentUser.uid), newProg);
       }
@@ -805,7 +686,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setQuranProgress(prev => {
       const key = `${surahNumber}_${ayahNumber}`;
       const updatedNotes = { ...(prev.ayahNotes || {}), [key]: noteText };
-      const newProg = { ...prev, ayahNotes: updatedNotes };
+      const newProg = { ...prev, ayahNotes: updatedNotes, updatedAt: new Date().toISOString() };
       if (auth.currentUser) {
         safeFirestoreSet(doc(db, 'quranProgress', auth.currentUser.uid), newProg);
       }
@@ -814,7 +695,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const saveBookToFirestore = async (book: UserBook) => {
-    if (auth.currentUser) {
+    if (auth.currentUser && (!book.userId || book.userId === auth.currentUser.uid)) {
       const raw = { ...book, userId: auth.currentUser.uid };
       delete raw.fileStorageUrl;
       delete raw.fileData;
@@ -844,16 +725,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const attachBookFile = async (bookId: string, fileBlob: File): Promise<string> => {
-    const fileType = fileBlob.name.endsWith('.epub') ? 'epub' : 'pdf';
-    const objectUrl = await saveBookFileToIDB(bookId, fileBlob, fileBlob.name, fileType as 'pdf' | 'epub');
+    const extension = fileBlob.name.split('.').at(-1)?.toLowerCase();
+    if (extension !== 'pdf' && extension !== 'epub') throw new Error('PDF veya EPUB dosyası seç.');
+    const fileType = extension;
+    const objectUrl = await saveBookFileToIDB(bookId, fileBlob, fileBlob.name, fileType);
     
     setUserBooks(prev => prev.map(b => {
       if (b.id === bookId) {
-        const updatedBook = {
+        const updatedBook: UserBook = {
           ...b,
           fileStorageUrl: objectUrl,
           fileName: fileBlob.name,
-          fileType: fileType as 'pdf' | 'epub',
+          fileType: fileType,
           updatedAt: new Date().toISOString()
         };
         saveBookToFirestore(updatedBook);
@@ -863,6 +746,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     return objectUrl;
+  };
+
+  const detachBookFile = async (bookId: string) => {
+    await deleteBookFileFromIDB(bookId);
+    const withoutFile = (book: UserBook) => {
+      const { fileStorageUrl, fileData, fileName, fileType, ...remaining } = book;
+      return { ...remaining, updatedAt: new Date().toISOString() };
+    };
+    setUserBooks(previous => previous.map(book => {
+      if (book.id !== bookId) return book;
+      const updated = withoutFile(book);
+      saveBookToFirestore(updated);
+      return updated;
+    }));
+    if (activeBookForReader?.id === bookId) setActiveBookForReader(null);
   };
 
   const updateBookTags = (bookId: string, tags: string[]) => {
@@ -883,8 +781,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUserBooks(prev => {
       // Robust check for existing book by case-insensitive title and author match
       const existingIndex = prev.findIndex(b => 
-        b.title.trim().toLowerCase() === bookData.title.trim().toLowerCase() && 
-        b.author.trim().toLowerCase() === bookData.author.trim().toLowerCase()
+        b.title.trim().toLocaleLowerCase('tr') === bookData.title.trim().toLocaleLowerCase('tr') &&
+        b.author.trim().toLocaleLowerCase('tr') === bookData.author.trim().toLocaleLowerCase('tr') &&
+        (b.volumeNumber || 1) === (bookData.volumeNumber || 1)
       );
 
       if (existingIndex !== -1) {
@@ -892,9 +791,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const existingBook = prev[existingIndex];
         const updatedBook: UserBook = {
           ...existingBook,
-          ...bookData, 
           updatedAt: now,
-          createdAt: now // Important: Update createdAt to move to front of "Recently Added"
+          createdAt: now
         };
         
         const rest = prev.filter((_, i) => i !== existingIndex);
@@ -907,7 +805,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Brand new book
         const newBook: UserBook = {
           ...bookData,
-          id: `ub-${Date.now()}`,
+          id: `ub-${crypto.randomUUID()}`,
           userId: auth.currentUser?.uid,
           createdAt: now,
           updatedAt: now
@@ -920,70 +818,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const updateBookProgress = (bookId: string, newPage: number) => {
-    const now = new Date().toISOString();
-    const todayStr = now.split('T')[0];
+  const lastReadPages = useRef(new Map<string, number>());
+  const updateBookProgress = (bookId: string, newPage: number, fileLength?: number) => {
+    const book = userBooks.find(item => item.id === bookId);
+    if (!book || !Number.isFinite(newPage)) return;
     const validPage = Math.max(1, Math.floor(newPage));
+    const totalPages = Math.max(fileLength || book.totalPages || 1, validPage);
+    const previousPage = lastReadPages.current.get(bookId) ?? book.currentPage;
+    if (previousPage === validPage && book.totalPages === totalPages) return;
 
-    try {
-      localStorage.setItem(`dk_last_page_${bookId}`, String(validPage));
-    } catch {}
+    lastReadPages.current.set(bookId, validPage);
+    try { localStorage.setItem(`dk_last_page_${bookId}`, String(validPage)); } catch {}
+    const now = new Date().toISOString();
+    const update = (current: UserBook): UserBook => {
+      const status = validPage >= totalPages ? 'completed' : current.status === 'want_to_read' ? 'reading' : current.status;
+      return {
+        ...current,
+        currentPage: validPage,
+        totalPages,
+        status,
+        endDate: status === 'completed' ? current.endDate || readingDate() : current.endDate,
+        updatedAt: now,
+      };
+    };
 
-    const targetBook = userBooks.find(b => b.id === bookId);
-    let pagesDiff = 0;
-    let updatedBookToSave: UserBook | null = null;
-
-    setUserBooks(prev => {
-      return prev.map(b => {
-        if (b.id === bookId) {
-          pagesDiff = Math.max(0, validPage - b.currentPage);
-          const finalTotal = Math.max(b.totalPages || 1, validPage);
-          const updatedStatus = validPage >= finalTotal ? 'completed' : b.status === 'want_to_read' ? 'reading' : b.status;
-
-          const updatedBook: UserBook = {
-            ...b,
-            currentPage: validPage,
-            totalPages: finalTotal,
-            status: updatedStatus,
-            endDate: updatedStatus === 'completed' && !b.endDate ? todayStr : b.endDate,
-            updatedAt: now
-          };
-          updatedBookToSave = updatedBook;
-          return updatedBook;
-        }
-        return b;
-      });
-    });
-
-    // Also keep activeBookForReader state synchronized
-    setActiveBookForReaderState(current => {
-      if (current && current.id === bookId) {
-        return {
-          ...current,
-          currentPage: validPage,
-          totalPages: Math.max(current.totalPages || 1, validPage)
-        };
-      }
-      return current;
-    });
-
-    if (updatedBookToSave) {
-      saveBookToFirestore(updatedBookToSave);
-    }
-    if (pagesDiff > 0 && targetBook) {
-      logReadingSession(bookId, pagesDiff);
-    }
+    setUserBooks(previous => previous.map(item => item.id === bookId ? update(item) : item));
+    setActiveBookForReaderState(current => current?.id === bookId ? update(current) : current);
+    saveBookToFirestore(update(book));
+    if (!fileLength && validPage > previousPage) logReadingSession(bookId, validPage - previousPage);
   };
 
   const updateBookStatus = (bookId: string, status: UserBook['status']) => {
     const now = new Date().toISOString();
     setUserBooks(prev => prev.map(b => {
       if (b.id === bookId) {
-        const updated = { ...b, status, updatedAt: now };
+        const updated = { ...b, status, endDate: status === 'completed' ? b.endDate || readingDate() : b.endDate, updatedAt: now };
         saveBookToFirestore(updated);
         return updated;
       }
       return b;
+    }));
+  };
+
+  const updateBookLength = (bookId: string, pageCount: number) => {
+    if (!Number.isSafeInteger(pageCount) || pageCount < 1) return;
+    setUserBooks(previous => previous.map(book => {
+      if (book.id !== bookId || pageCount < book.currentPage) return book;
+      const updated = { ...book, totalPages: pageCount, updatedAt: new Date().toISOString() };
+      saveBookToFirestore(updated);
+      return updated;
     }));
   };
 
@@ -1056,9 +939,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetBook = userBooks.find(b => b.id === bookId);
     if (!targetBook) return;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = readingDate();
     const newSession: ReadingSession = {
-      id: `rs-${Date.now()}`,
+      id: `rs-${crypto.randomUUID()}`,
       userId: auth.currentUser?.uid,
       bookId,
       bookTitle: targetBook.title,
@@ -1202,7 +1085,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       version: '1.0.0',
       exportedAt: new Date().toISOString(),
       userProfile,
-      userBooks,
+      userBooks: booksForStorage(userBooks),
       readingSessions,
       reviews,
       quotations,
@@ -1212,189 +1095,135 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return JSON.stringify(backupData, null, 2);
   };
 
-  // Restore User Data with Validation
+  // Commit the entire local restore before exposing it to the UI.
   const importUserDataJSON = async (jsonString: string, onProgress?: (progress: number) => void) => {
+    if (!isHydrated) return { success: false, message: 'Yerel kütüphane yükleniyor. Biraz sonra yeniden dene.' };
     onProgress?.(10);
     const validation = validateBackupJSON(jsonString);
-
     if (!validation.isValid) {
-      return {
-        success: false,
-        validation,
-        message: `Yedek Dosyası Doğrulama Hatası: ${validation.errors.join(' ')}`
-      };
+      return { success: false, validation, message: validation.errors.join(' ') };
     }
 
     try {
-      const data = JSON.parse(jsonString);
-      onProgress?.(30);
+      const data: BackupPayload = JSON.parse(jsonString);
+      const now = new Date().toISOString();
+      const bookIds = new Set<string>();
+      const books = data.userBooks.map(book => {
+        const category = MAIN_CATEGORIES.find(item => item.toLocaleLowerCase('tr') === String(book.category ?? '').toLocaleLowerCase('tr'))
+          || inferCategoryForBook(book.title, book.subCategory, book.author);
+        const pages = Number(book.totalPages);
+        const progress = Number(book.currentPage);
+        const currentPage = Number.isFinite(progress) ? Math.max(0, Math.floor(progress)) : 0;
+        const totalPages = Number.isFinite(pages) && pages >= 0 ? Math.max(currentPage, Math.floor(pages)) : Math.max(300, currentPage);
+        const id = typeof book.id === 'string' && book.id && !book.id.includes('/') && !bookIds.has(book.id) ? book.id : crypto.randomUUID();
+        bookIds.add(id);
+        const status = ['reading', 'completed', 'paused', 'want_to_read'].includes(book.status)
+          ? book.status : currentPage >= totalPages ? 'completed' : 'reading';
+        const subCategory = typeof book.subCategory === 'string' && book.subCategory.trim() ? book.subCategory : 'Genel';
+        const tags = Array.isArray(book.tags) ? book.tags.filter(tag => typeof tag === 'string' && tag.trim()) : [];
+        return {
+          ...book, id, category, currentPage, totalPages, status, subCategory,
+          tags: [...new Set(tags.length ? tags : [category, subCategory])],
+          coverUrl: typeof book.coverUrl === 'string' ? book.coverUrl : '',
+          createdAt: book.createdAt || now,
+          updatedAt: book.updatedAt || now,
+        } satisfies UserBook;
+      });
 
-      let bookCount = 0;
-      if (Array.isArray(data.userBooks)) {
-        const normalizedBooks = data.userBooks.map((b: any) => {
-          const rawCat = b.category || '';
-          let matchedCat = MAIN_CATEGORIES.find(c => c.toLowerCase() === rawCat.toLowerCase());
-          if (!matchedCat) {
-            matchedCat = inferCategoryForBook(b.title, b.subCategory, b.author);
-          }
-          const validStatus = ['reading', 'completed', 'paused', 'want_to_read'].includes(b.status) 
-            ? b.status 
-            : (b.currentPage >= b.totalPages ? 'completed' : 'reading');
-
-          const finalTags = Array.isArray(b.tags) && b.tags.length > 0 ? b.tags : [matchedCat, b.subCategory].filter(Boolean);
-          return {
-            ...b,
-            category: matchedCat,
-            subCategory: b.subCategory || 'Genel',
-            status: validStatus,
-            tags: Array.from(new Set(finalTags))
-          };
-        });
-        bookCount = normalizedBooks.length;
-        setUserBooks(normalizedBooks);
-        // Persist all imported book covers directly into IndexedDB so they never disappear
-        normalizedBooks.forEach((book: UserBook) => {
-          const coverToSave = book.coverUrl || DEFAULT_BOOK_COVERS[book.category] || DEFAULT_BOOK_COVERS["Edebiyat"];
-          if (book.id && coverToSave) {
-            saveCoverToIDB(book.id, coverToSave).catch(() => {});
-          }
-        });
-        saveAppDataToIDB('dk_user_books', normalizedBooks);
-        safeLocalStorageSet('dk_user_books', normalizedBooks);
-      }
+      const sessions = data.readingSessions?.map(session => ({ ...session, pagesRead: Math.max(0, Number(session.pagesRead) || 0) }));
+      const profile = data.userProfile && { ...userProfile, ...data.userProfile, uid: auth.currentUser?.uid || userProfile.uid };
+      const quran = data.quranProgress && { ...quranProgress, ...data.quranProgress };
+      const durableBooks = booksForStorage(books);
+      const entries: [string, unknown][] = [['dk_user_books', durableBooks]];
+      if (sessions) entries.push(['dk_reading_sessions', sessions]);
+      if (data.reviews) entries.push(['dk_reviews', data.reviews]);
+      if (data.quotations) entries.push(['dk_quotations', data.quotations]);
+      if (data.vocabulary) entries.push(['dk_vocabulary', data.vocabulary]);
+      if (profile) entries.push(['dk_user_profile', profile]);
+      if (quran) entries.push(['dk_quran_progress', quran]);
 
       onProgress?.(60);
-
-      if (Array.isArray(data.readingSessions)) {
-        setReadingSessions(data.readingSessions);
-        saveAppDataToIDB('dk_reading_sessions', data.readingSessions);
-        safeLocalStorageSet('dk_reading_sessions', data.readingSessions);
+      await saveAppDataBatchToIDB(entries);
+      entries.forEach(([key, value]) => mirrorLocalStorage(key, value));
+      for (const book of [...userBooks, ...books]) {
+        try { localStorage.removeItem(`dk_last_page_${book.id}`); } catch {}
       }
-      if (Array.isArray(data.reviews)) {
-        setReviews(data.reviews);
-        saveAppDataToIDB('dk_reviews', data.reviews);
-        safeLocalStorageSet('dk_reviews', data.reviews);
-      }
-      if (Array.isArray(data.quotations)) {
-        setQuotations(data.quotations);
-        saveAppDataToIDB('dk_quotations', data.quotations);
-        safeLocalStorageSet('dk_quotations', data.quotations);
-      }
-      if (Array.isArray(data.vocabulary)) {
-        setVocabulary(data.vocabulary);
-        saveAppDataToIDB('dk_vocabulary', data.vocabulary);
-        safeLocalStorageSet('dk_vocabulary', data.vocabulary);
-      }
-      if (data.quranProgress) {
-        setQuranProgress(data.quranProgress);
-        saveAppDataToIDB('dk_quran_progress', data.quranProgress);
-        safeLocalStorageSet('dk_quran_progress', data.quranProgress);
-      }
-
-      onProgress?.(90);
-
-      // Trigger cloud sync asynchronously in background without blocking the UI
-      if (auth.currentUser) {
-        setTimeout(() => {
-          syncAllDataToCloud().catch(e => console.warn("Background sync warning:", e));
-        }, 100);
-      }
-
+      lastReadPages.current.clear();
+      setActiveBookForReader(null);
+      setSelectedBookForDetail(null);
+      setUserBooks(durableBooks);
+      if (sessions) setReadingSessions(sessions);
+      if (data.reviews) setReviews(data.reviews);
+      if (data.quotations) setQuotations(data.quotations);
+      if (data.vocabulary) setVocabulary(data.vocabulary);
+      if (profile) setUserProfile(profile);
+      if (quran) setQuranProgress(quran);
       onProgress?.(100);
-
-      return { 
-        success: true, 
-        validation,
-        message: `✅ Yedek doğrulaması başarılı! ${bookCount} eser, kapaklar, Kur'an ilerlemesi ve tüm arşiv yerel hafızaya aktarıldı.` 
-      };
-    } catch (err) {
-      return { 
-        success: false, 
-        message: `Ayrıştırma hatası: ${err instanceof Error ? err.message : 'Bilinmeyen dosya biçimi'}`
-      };
+      return { success: true, validation, message: `Yedek bu cihaza kaydedildi. ${books.length} eser ve dosyadaki diğer kayıtlar geri yüklendi.` };
+    } catch (error) {
+      console.warn('Backup restore failed:', error);
+      return { success: false, validation, message: 'Yedek cihazın yerel depolamasına kaydedilemedi. Lütfen yeniden dene.' };
     }
   };
 
+  const cloudUploadInProgress = useRef(false);
   const syncAllDataToCloud = async (onProgress?: (progress: number) => void): Promise<{ success: boolean; message: string }> => {
-    if (!auth.currentUser) {
-      return { 
-        success: false, 
-        message: "⚠️ Buluta eşitlemek için lütfen önce Google ile giriş yapın." 
-      };
+    const uid = auth.currentUser?.uid;
+    if (!uid) return { success: false, message: 'Buluta eşitlemek için Google ile giriş yap.' };
+    if (!isHydrated || cloudUploadInProgress.current) {
+      return { success: false, message: 'Yerel kayıtların yüklenmesini veya devam eden eşitlemeyi bekle.' };
     }
+
+    cloudUploadInProgress.current = true;
     setCloudSyncStatus('syncing');
-    onProgress?.(20);
+    const entries: { collection: string; id: string; record: Record<string, unknown> }[] = [];
+    const include = <T extends { id: string; userId?: string },>(collectionName: string, records: T[]) => {
+      for (const item of records) {
+        if (!item.id || (item.userId && item.userId !== uid)) continue;
+        entries.push({ collection: collectionName, id: item.id, record: { ...item, userId: uid } });
+      }
+    };
+    let confirmed = 0;
     try {
-      const uid = auth.currentUser.uid;
-      const batch = writeBatch(db);
+      include('userBooks', booksForStorage(userBooks).map(book => ({
+        ...book,
+        coverUrl: book.coverUrl?.startsWith('data:') && book.coverUrl.length > 5000 ? '' : book.coverUrl,
+      })));
+      include('readingSessions', readingSessions);
+      include('reviews', reviews);
+      include('quotations', quotations);
+      include('vocabulary', vocabulary);
+      if (quranProgress.updatedAt) entries.push({ collection: 'quranProgress', id: uid, record: { ...quranProgress } });
 
-      onProgress?.(40);
-
-      userBooks.forEach(book => {
-        const raw = { ...book, userId: uid };
-        delete raw.fileData;
-        delete raw.fileStorageUrl;
-        if (typeof raw.coverUrl === 'string' && raw.coverUrl.length > 5000 && raw.coverUrl.startsWith('data:')) {
-          raw.coverUrl = '';
+      for (let offset = 0; offset < entries.length; offset += 350) {
+        if (auth.currentUser?.uid !== uid) throw new Error('Oturum değişti.');
+        const batch = writeBatch(db);
+        const chunk = entries.slice(offset, offset + 350);
+        for (const entry of chunk) batch.set(doc(db, entry.collection, entry.id), cleanForFirestore(entry.record));
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            batch.commit(),
+            new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error('Sunucu onayı bekleniyor.')), 20000); }),
+          ]);
+        } finally {
+          clearTimeout(timeout);
         }
-        const clean = cleanForFirestore(raw);
-        batch.set(doc(db, 'userBooks', book.id), clean);
-      });
-
-      onProgress?.(60);
-
-      readingSessions.forEach(session => {
-        const clean = cleanForFirestore({ ...session, userId: uid });
-        batch.set(doc(db, 'readingSessions', session.id), clean);
-      });
-
-      reviews.forEach(rev => {
-        const clean = cleanForFirestore({ ...rev, userId: uid });
-        batch.set(doc(db, 'reviews', rev.id), clean);
-      });
-
-      quotations.forEach(q => {
-        const clean = cleanForFirestore({ ...q, userId: uid });
-        batch.set(doc(db, 'quotations', q.id), clean);
-      });
-
-      vocabulary.forEach(v => {
-        const clean = cleanForFirestore({ ...v, userId: uid });
-        batch.set(doc(db, 'vocabulary', v.id), clean);
-      });
-
-      onProgress?.(85);
-
-      if (quranProgress) {
-        const cleanQuran = cleanForFirestore(quranProgress);
-        batch.set(doc(db, 'quranProgress', uid), cleanQuran);
+        confirmed += chunk.length;
+        onProgress?.(Math.round(confirmed / entries.length * 100));
       }
 
-      onProgress?.(95);
-
-      // Commit batch with a safe 3-second race timeout so it never hangs indefinitely
-      await Promise.race([
-        batch.commit(),
-        new Promise((resolve) => setTimeout(resolve, 3000))
-      ]);
-
-      onProgress?.(100);
       setCloudSyncStatus('synced');
-      return { 
-        success: true, 
-        message: `✅ Buluta eşitleme başarılı! ${userBooks.length} eser, ${readingSessions.length} okuma kaydı, ${quotations.length} alıntı ve ${vocabulary.length} kelime Google hesabınızla senkronize edildi.` 
-      };
-    } catch (err: any) {
-      console.warn("Cloud sync warning:", err);
       onProgress?.(100);
-      setCloudSyncStatus('synced');
-      return { 
-        success: true, 
-        message: `✅ Verileriniz güvenle kaydedildi (${userBooks.length} eser). Yerel verileriniz %100 güvendedir.` 
-      };
+      return { success: true, message: `Bulut eşitlemesi tamamlandı. ${confirmed} kayıt için sunucu onayı alındı.` };
+    } catch (error) {
+      console.warn('Firestore upload failed:', error);
+      setCloudSyncStatus('error');
+      return { success: false, message: `Bulut eşitlemesi tamamlanamadı. ${confirmed} kayıt onaylandı. Diğer kayıtlar cihazda duruyor.` };
+    } finally {
+      cloudUploadInProgress.current = false;
     }
   };
-
 
   const verifyDataIntegrity = () => {
     return {
@@ -1445,15 +1274,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsAddPoemModalOpen,
         quranProgress,
         updateQuranProgress,
+        recordMushafPage,
         bookmarkAyah,
         toggleFavoriteAyah,
         saveAyahNote,
         addBookToLibrary,
         updateBookProgress,
+        updateBookLength,
         updateBookStatus,
         deleteBookFromLibrary,
         logReadingSession,
         attachBookFile,
+        detachBookFile,
         updateBookCover,
         updateBookTags,
         addReview,

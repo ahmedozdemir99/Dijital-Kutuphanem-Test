@@ -1,19 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Compass, Search, Filter, BookPlus, UserCheck, Feather, GraduationCap, 
   ChevronRight, ChevronDown, Check, Sparkles, BookOpen, User, Copy, Quote, Heart, ArrowRight, Library, Volume2, Calendar, Award, CheckCircle2, Play, Download, Image as ImageIcon, X, RefreshCw 
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { CatalogBook, Poet, Poem } from '../types';
-import { 
-  MAIN_CATEGORIES, 
-  generateFull1024Catalog, 
-  FULL_FOUR_YEAR_CURRICULUM, 
-  CurriculumMonthData, 
-  CurriculumWeeklyBook 
-} from '../data/catalogData';
+import { MAIN_CATEGORIES } from '../data/catalogData';
+import { bookIdentity, getCurriculumProgress, generateFull1024Catalog, FULL_FOUR_YEAR_CURRICULUM } from '../data/readingPlanData';
+import type { CurriculumWeeklyBook } from '../types';
 
-import { getFull256PoetryCollection } from '../data/poetryData';
+import { POETS_COLLECTION_FULL } from '../data/poetryData';
 import { QuranSection } from './QuranSection';
 import { PoemPosterModal } from './PoemPosterModal';
 import { BookCoverImage } from './BookCoverImage';
@@ -43,7 +39,7 @@ const PoetAvatar: React.FC<{ name: string; portraitUrl?: string }> = ({ name, po
 };
 
 export const ExploreView: React.FC = () => {
-  const { userBooks, addBookToLibrary, deleteBookFromLibrary, addQuotation, setActiveBookForReader, exploreSubTab, setExploreSubTab } = useApp();
+  const { userBooks, addBookToLibrary, addQuotation, setActiveBookForReader, exploreSubTab, setExploreSubTab } = useApp();
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -55,6 +51,17 @@ export const ExploreView: React.FC = () => {
   const [selectedPoem, setSelectedPoem] = useState<{ poem: Poem; poetName: string } | null>(null);
   const [showPosterModal, setShowPosterModal] = useState<{ poem: Poem; poetName: string } | null>(null);
   const [addedSuccessBookId, setAddedSuccessBookId] = useState<string | null>(null);
+  const [poemCopyMessage, setPoemCopyMessage] = useState('');
+  useEffect(() => {
+    if (!selectedPoem) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (showPosterModal) setShowPosterModal(null);
+      else setSelectedPoem(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [selectedPoem, showPosterModal]);
 
   // Accordion Expand/Collapse States for 4-Year Curriculum (Year -> Month -> Week)
   const [expandedYears, setExpandedYears] = useState<number[]>([1]); // Default Year 1 open
@@ -64,8 +71,8 @@ export const ExploreView: React.FC = () => {
   // Load 1024 works catalog lazily
   const fullCatalog = useMemo(() => generateFull1024Catalog(), []);
 
-  // Load 256 poems collection
-  const fullPoetryCollection = useMemo(() => getFull256PoetryCollection(), []);
+  // Local poetry collection
+  const fullPoetryCollection = POETS_COLLECTION_FULL;
 
   // Count total poems
   const totalPoemsCount = useMemo(() => {
@@ -79,12 +86,12 @@ export const ExploreView: React.FC = () => {
         return false;
       }
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+        const q = searchQuery.trim().toLocaleLowerCase('tr');
         return (
-          book.title.toLowerCase().includes(q) ||
-          book.author.toLowerCase().includes(q) ||
-          book.description.toLowerCase().includes(q) ||
-          book.subCategory.toLowerCase().includes(q)
+          book.title.toLocaleLowerCase('tr').includes(q) ||
+          book.author.toLocaleLowerCase('tr').includes(q) ||
+          book.description.toLocaleLowerCase('tr').includes(q) ||
+          book.subCategory.toLocaleLowerCase('tr').includes(q)
         );
       }
       return true;
@@ -123,76 +130,31 @@ export const ExploreView: React.FC = () => {
     }
   };
 
-  const handleToggleCurriculumBook = (catBook: CatalogBook | CurriculumWeeklyBook) => {
-    const existing = userBooks.find(b => b.title.toLowerCase() === catBook.title.toLowerCase());
-    
-    // The user wants "Add to Library" to always move the book to the top.
-    // If it's already there, calling addBookToLibrary will refresh its timestamp and position.
-    // We only remove if specifically toggling a book that IS already there in a way that implies removal.
-    // However, to satisfy "move to top", we should call addBookToLibrary.
-    
-    addBookToLibrary({
-      title: catBook.title,
-      author: catBook.author,
-      category: catBook.category,
-      publisher: 'Klasik Yayınları',
-      totalPages: catBook.totalPages || 280,
-      currentPage: existing ? existing.currentPage : 0,
-      coverUrl: catBook.coverUrl,
-      description: catBook.description,
-      status: existing ? existing.status : 'reading',
-      isMultiVolume: catBook.isMultiVolume,
-      volumeNumber: (catBook as CurriculumWeeklyBook).volumeNumber || 1
-    });
-    
-    setAddedSuccessBookId(catBook.title);
-    setTimeout(() => setAddedSuccessBookId(null), 2500);
-  };
+  const libraryByWork = useMemo(() => new Map(userBooks.map(book => [bookIdentity(book), book])), [userBooks]);
 
-  const handleAddCatalogBookToLibrary = (catBook: CatalogBook | CurriculumWeeklyBook) => {
-    // Standard addition that moves to top
+  const addCatalogBook = (book: CatalogBook | CurriculumWeeklyBook) => {
     addBookToLibrary({
-      title: catBook.title,
-      author: catBook.author,
-      category: catBook.category,
-      publisher: 'Klasik Yayınları',
-      totalPages: catBook.totalPages || 280,
+      title: book.title,
+      author: book.author,
+      category: book.category,
+      subCategory: 'subCategory' in book ? book.subCategory : book.description,
+      totalPages: book.totalPages || 0,
       currentPage: 0,
-      coverUrl: catBook.coverUrl,
-      description: catBook.description,
-      status: 'reading',
-      isMultiVolume: catBook.isMultiVolume,
-      volumeNumber: (catBook as CurriculumWeeklyBook).volumeNumber || 1
+      coverUrl: book.coverUrl,
+      status: 'want_to_read',
+      isMultiVolume: book.isMultiVolume,
+      volumeNumber: book.volumeNumber,
     });
-    setAddedSuccessBookId(catBook.title);
+  };
+
+  const handleAddCatalogBookToLibrary = (book: CatalogBook | CurriculumWeeklyBook) => {
+    addCatalogBook(book);
+    setAddedSuccessBookId(book.title);
     setTimeout(() => setAddedSuccessBookId(null), 2500);
   };
 
-  const handleRemoveWholeYear = (yearNumber: number) => {
-    const targetYear = FULL_FOUR_YEAR_CURRICULUM.find(y => y.yearNumber === yearNumber);
-    if (!targetYear) return;
-    const yearTitles = new Set(
-      targetYear.months.flatMap(m => m.weeklyBooks.map(wb => wb.title.toLowerCase()))
-    );
-    const toRemove = userBooks.filter(b => yearTitles.has(b.title.toLowerCase()));
-    toRemove.forEach(b => deleteBookFromLibrary(b.id));
-  };
-
-  // Calculate overall 4-year curriculum completion stats
-  const totalCurriculumBooksCount = FULL_FOUR_YEAR_CURRICULUM.reduce((accYear, year) => {
-    return accYear + year.months.reduce((accMonth, month) => accMonth + month.weeklyBooks.length, 0);
-  }, 0);
-
-  const completedCurriculumBooks = userBooks.filter(userBook => {
-    if (userBook.status !== 'completed') return false;
-    return FULL_FOUR_YEAR_CURRICULUM.some(year => 
-      year.months.some(month => 
-        month.weeklyBooks.some(wb => wb.title.toLowerCase() === userBook.title.toLowerCase())
-      )
-    );
-  }).length;
-
-  const curriculumCompletionPercent = Math.round((completedCurriculumBooks / Math.max(1, totalCurriculumBooksCount)) * 100);
+  const { totalBooks: totalCurriculumBooksCount, completedBooks: completedCurriculumBooks, percent } = useMemo(() => getCurriculumProgress(userBooks), [userBooks]);
+  const curriculumCompletionPercent = Number(percent.toFixed(1));
 
   return (
     <div className="space-y-6 pb-12">
@@ -276,7 +238,7 @@ export const ExploreView: React.FC = () => {
                   <span>İlim Yolculuğum (40 Yıllık Okuma Müfredatı)</span>
                 </h2>
                 <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                  Klasik ve modern ilim hayatının temel taşlarını kapsayan 40 Yıllık (1024 Eser) sistematik okuma müfredatı ve ilim rehberi.
+                  1.024 öneri, 40 yıllık planda yer alıyor. İlerleme hesabında aynı eser tek sayılır. Yeni eser atanmayan aylarda tekrar veya kişisel seçim yapabilirsin.
                 </p>
               </div>
 
@@ -321,58 +283,18 @@ export const ExploreView: React.FC = () => {
                       </div>
 
                       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                        {/* 1-Click Clear / Add Entire Year */}
-                        {(() => {
-                          const yearBooks = year.months.flatMap(m => m.weeklyBooks);
-                          const addedCount = yearBooks.filter(wb => userBooks.some(b => b.title.toLowerCase() === wb.title.toLowerCase())).length;
-                          const hasAny = addedCount > 0;
-
-                          return (
-                            <div className="flex items-center gap-2">
-                              {hasAny && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (window.confirm(`${year.yearNumber}. Yılın kütüphanenizdeki ${addedCount} eserini kütüphanenizden kaldırmak istiyor musunuz?`)) {
-                                      handleRemoveWholeYear(year.yearNumber);
-                                    }
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-[11px] font-bold border border-rose-500/20 transition-all flex items-center gap-1 cursor-pointer"
-                                  title="Tüm Yılı Kütüphaneden Çıkar"
-                                >
-                                  <span>Kaldır ✕</span>
-                                </button>
-                              )}
-                              
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  yearBooks.forEach(wb => {
-                                    // Removed existence guard so even existing books get moved to top
-                                    addBookToLibrary({
-                                      title: wb.title,
-                                      author: wb.author,
-                                      category: wb.category,
-                                      publisher: 'Klasik Yayınları',
-                                      totalPages: wb.totalPages || 280,
-                                      currentPage: 0,
-                                      coverUrl: wb.coverUrl,
-                                      description: wb.description,
-                                      status: 'reading',
-                                      isMultiVolume: wb.isMultiVolume,
-                                      volumeNumber: wb.volumeNumber || 1
-                                    });
-                                  });
-                                  alert(`${year.yearNumber}. Yılın tüm eserleri kütüphanenize eklendi/güncellendi ve en üste taşındı.`);
-                                }}
-                                className="px-2.5 py-1 rounded-lg bg-[#742C3C] hover:bg-[#5a222f] text-white text-[11px] font-bold transition-all flex items-center gap-1 shadow-xs cursor-pointer"
-                                title="Tüm Yılın Eserlerini Kütüphaneme Toplu Ekle / Güncelle"
-                              >
-                                <span>{hasAny ? 'Hepsini Güncelle ↑' : 'Yılı Toplu Ekle +'}</span>
-                              </button>
-                            </div>
-                          );
-                        })()}
+                        {year.months.some(month => month.weeklyBooks.length > 0) && (
+                          <button
+                            onClick={event => {
+                              event.stopPropagation();
+                              year.months.flatMap(month => month.weeklyBooks).filter(book => !libraryByWork.has(bookIdentity(book))).forEach(addCatalogBook);
+                            }}
+                            className="rounded-lg bg-[#742C3C] px-2.5 py-1 text-[11px] font-bold text-white hover:bg-[#5a222f]"
+                            title="Yılın önerilerini okunacak listesine ekle"
+                          >
+                            Yılı Ekle +
+                          </button>
+                        )}
 
                         <span className="text-xs font-semibold text-[#B79A63] hidden md:inline">
                           {year.months.length} Ay / {year.months.reduce((a, m) => a + m.weeklyBooks.length, 0)} Eser
@@ -424,8 +346,8 @@ export const ExploreView: React.FC = () => {
                               {isMonthOpen && (
                                 <div className="p-3 md:p-4 bg-[#F8F5EF]/60 dark:bg-[#141414]/60 border-t border-black/5 dark:border-white/5 grid grid-cols-1 md:grid-cols-2 gap-3">
                                   {month.weeklyBooks.map(wb => {
-                                    const inUserLib = userBooks.some(b => b.title.toLowerCase() === wb.title.toLowerCase());
-                                    const userBookObj = userBooks.find(b => b.title.toLowerCase() === wb.title.toLowerCase());
+                                    const userBookObj = libraryByWork.get(bookIdentity(wb));
+                                    const inUserLib = !!userBookObj;
                                     const isCompleted = userBookObj?.status === 'completed';
 
                                     return (
@@ -456,15 +378,6 @@ export const ExploreView: React.FC = () => {
                                         </div>
 
                                         <div className="flex items-center gap-2 shrink-0">
-                                          {inUserLib && (
-                                            <button
-                                              onClick={() => deleteBookFromLibrary(userBookObj!.id)}
-                                              className="p-2 rounded-xl bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 transition-all"
-                                              title="Kütüphaneden Çıkar"
-                                            >
-                                              <X className="w-4 h-4" />
-                                            </button>
-                                          )}
                                           <button
                                             onClick={() => handleAddCatalogBookToLibrary(wb)}
                                             className={`p-2 rounded-xl text-xs font-semibold transition-all ${
@@ -474,7 +387,8 @@ export const ExploreView: React.FC = () => {
                                                 ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-500/25'
                                                 : 'bg-[#742C3C] text-white hover:bg-[#4B1E2B]'
                                             }`}
-                                            title={inUserLib ? 'Kütüphaneme ekle' : 'Kütüphaneye Ekle'}
+                                            title={inUserLib ? 'Kütüphanede mevcut' : 'Okunacak listesine ekle'}
+                                            disabled={inUserLib}
                                           >
                                             {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : inUserLib ? <RefreshCw className="w-4 h-4" /> : <BookPlus className="w-4 h-4 text-[#B79A63]" />}
                                           </button>
@@ -546,7 +460,7 @@ export const ExploreView: React.FC = () => {
             {/* Catalog Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pt-2">
               {paginatedCatalog.map(catBook => {
-                const inLib = userBooks.some(b => b.title.toLowerCase() === catBook.title.toLowerCase());
+                const inLib = libraryByWork.has(bookIdentity(catBook));
                 return (
                   <div 
                     key={catBook.id}
@@ -589,11 +503,12 @@ export const ExploreView: React.FC = () => {
 
                     <div className="pt-3 mt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between">
                       <span className="text-[10px] text-slate-400">
-                        {catBook.isMultiVolume ? `${catBook.totalVolumes} Cilt Külliyat` : `${catBook.totalPages || 280} Sayfa`}
+                        {catBook.isMultiVolume ? `${catBook.totalVolumes} Cilt Külliyat` : (catBook.totalPages ? `${catBook.totalPages} sayfa` : 'Sayfa sayısı baskıya göre değişir')}
                       </span>
 
                       <button
                         onClick={() => handleAddCatalogBookToLibrary(catBook)}
+                        disabled={inLib}
                         className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors ${
                           addedSuccessBookId === catBook.title
                             ? 'bg-emerald-600 text-white'
@@ -653,7 +568,7 @@ export const ExploreView: React.FC = () => {
         </div>
       )}
 
-      {/* 4. POETRY ARCHIVE (256 Şiir) */}
+      {/* 4. POETRY ARCHIVE (Şiir Seçkisi) */}
       {exploreSubTab === 'poets' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 shadow-sm border border-black/5 dark:border-white/5 space-y-6">
@@ -661,10 +576,10 @@ export const ExploreView: React.FC = () => {
               <div>
                 <h2 className="font-serif-title font-bold text-xl md:text-2xl text-[#742C3C] dark:text-[#B79A63] flex items-center gap-2">
                   <Feather className="w-6 h-6 text-[#B79A63]" />
-                  <span>Edebiyat ve Şiir Arşivi ({totalPoemsCount} Şiir & {fullPoetryCollection.length} Şair)</span>
+                  <span>Yerel Şiir Seçkisi ({totalPoemsCount} kayıt, {fullPoetryCollection.length} şair)</span>
                 </h2>
                 <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                  Klasik Divan, Tasavvuf, Milli Edebiyat, İkinci Yeni ve Dünya edebiyatından 256 seçme şiir. Şiirleri okuyabilir, PNG poster olarak indirebilirsiniz.
+                  Yerel seçkideki metinleri okuyabilir ve PNG poster olarak indirebilirsin.
                 </p>
               </div>
             </div>
@@ -689,7 +604,7 @@ export const ExploreView: React.FC = () => {
                       {poet.poems.map(p => (
                         <button
                           key={p.id}
-                          onClick={() => setSelectedPoem({ poem: p, poetName: poet.name })}
+                          onClick={() => { setPoemCopyMessage(''); setSelectedPoem({ poem: p, poetName: poet.name }); }}
                           className="w-full text-left p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-xs font-serif-title font-semibold flex items-center justify-between group"
                         >
                           <span className="truncate group-hover:text-[#742C3C] dark:group-hover:text-[#B79A63]">{p.title}</span>
@@ -708,7 +623,7 @@ export const ExploreView: React.FC = () => {
       {/* POEM MODAL VIEW */}
       {selectedPoem && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl border border-black/10 dark:border-white/10 animate-in zoom-in-95 duration-150 my-auto">
+          <div role="dialog" aria-modal="true" aria-label="Şiir metni" className="max-h-[calc(100dvh-2rem)] overflow-y-auto bg-white dark:bg-[#1E1E1E] rounded-3xl p-5 md:p-8 max-w-lg w-full shadow-2xl border border-black/10 dark:border-white/10">
             <div className="flex justify-between items-center mb-4 border-b border-black/5 dark:border-white/5 pb-3">
               <div>
                 <h3 className="font-serif-title font-bold text-xl text-[#742C3C] dark:text-[#B79A63]">
@@ -717,7 +632,7 @@ export const ExploreView: React.FC = () => {
                 <p className="text-xs font-semibold text-slate-500">— {selectedPoem.poetName}</p>
               </div>
               <button 
-                onClick={() => setSelectedPoem(null)} 
+                aria-label="Şiiri kapat" onClick={() => setSelectedPoem(null)}
                 className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-slate-500"
               >
                 <X className="w-5 h-5" />
@@ -728,11 +643,17 @@ export const ExploreView: React.FC = () => {
               {selectedPoem.poem.content}
             </div>
 
+            <p className="mt-2 text-[11px] text-slate-500">Yerel seçki metni. Alıntı veya paylaşım öncesinde güvenilir bir baskıyla karşılaştır.</p>
+            {poemCopyMessage && <p role="status" className="mt-2 text-xs">{poemCopyMessage}</p>}
             <div className="flex flex-wrap gap-2 pt-4">
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(`${selectedPoem.poem.title}\n\n${selectedPoem.poem.content}\n\n- ${selectedPoem.poetName}`);
-                  alert('Şiir panoya kopyalandı!');
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(`${selectedPoem.poem.title}\n\n${selectedPoem.poem.content}\n\n- ${selectedPoem.poetName}`);
+                    setPoemCopyMessage('Şiir panoya kopyalandı.');
+                  } catch {
+                    setPoemCopyMessage('Panoya erişilemedi. Metni seçip elle kopyalayabilirsin.');
+                  }
                 }}
                 className="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 flex items-center justify-center gap-1.5"
               >

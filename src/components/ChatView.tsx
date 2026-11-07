@@ -5,15 +5,25 @@ import {
   Sliders, Check
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { FULL_FOUR_YEAR_CURRICULUM } from '../data/catalogData';
-import { getFull256PoetryCollection } from '../data/poetryData';
+import { FULL_FOUR_YEAR_CURRICULUM } from '../data/readingPlanData';
+import { POETS_COLLECTION_FULL } from '../data/poetryData';
 import { buildVectorRAGContext } from '../utils/ragEngine';
+import type { RobiChatMode, RobiChatReply } from '../utils/robiChat';
 
 interface Message {
   role: 'user' | 'model';
   text: string;
   ragSummary?: string[];
+  model?: string;
+  isFallback?: boolean;
+  sourceUrls?: string[];
 }
+
+const CHAT_MODES: Record<RobiChatMode, { label: string; description: string }> = {
+  balanced: { label: 'Dengeli', description: 'Doğrudan açıklamalar, gerektiğinde örnek ve okuma önerisi.' },
+  deep: { label: 'Derin tahlil', description: 'Kavram, gerekçe, karşı görüş ve metin bağlamı üzerinden ayrıntılı inceleme.' },
+  source: { label: 'Kaynak incele', description: 'Soruna herkese açık bir bağlantı ekle. Arşiv kayıtların ve önceki sohbet bu isteğe eklenmez.' },
+};
 
 export interface VoicePreset {
   id: 'bilge' | 'dogal' | 'canli';
@@ -112,18 +122,19 @@ function cleanTextForSpeech(text: string): string {
 
 export const ChatView: React.FC = () => {
   const { userBooks, readingSessions, quotations, userProfile, reviews, vocabulary } = useApp();
-  const fullPoetryCollection = useMemo(() => getFull256PoetryCollection(), []);
+  const fullPoetryCollection = POETS_COLLECTION_FULL;
 
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'model',
-      text: `Selâmün Aleyküm, ${userProfile.displayName}! 🐿️ Ben senin bilge sincap koçun ve ilim arkadaşın **Robi**'yim! Kütüphanendeki 12 ana kategoriye, tamamlanan ve okunacak eserlerine, 256 şiir arşivimize ve 40 yıllık ilim müfredatımıza tam vukufiyetle hakimim. İster klavyeyle yaz, ister mikrofonuna dokunarak benimle sesli hasbihal et; sana anında ve sesli olarak mukabele edebilirim. Bugün hangi hikmetli konuyu ele alalım?`
+      text: `Selâmün aleyküm, ${userProfile.displayName}. Ben Robi. Bir eserin pasajını yorumlayabilir, iki düşünürün gerekçelerini karşılaştırabilir veya kütüphanenden bir okuma yolu çıkarabiliriz. İstersen bir bağlantı üzerinden de çalışabiliriz.`
     }
   ]);
   const [inputMessage, setInputMessage] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [showRagDetails, setShowRagDetails] = useState<boolean>(false);
-  const [lastRagSources, setLastRagSources] = useState<string[]>([]);
+  const [chatMode, setChatMode] = useState<RobiChatMode>('deep');
+  const chatModeRef = useRef<RobiChatMode>('deep');
   
   // Sesli Sohbet, Estetik Ses Tonu ve Karşılıklı Konuşma Durumları
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -456,8 +467,8 @@ export const ChatView: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // 1. Perform client-side Vector RAG Search over all user data, 1920-book curriculum, notes, and 256 poems
-      const ragResult = buildVectorRAGContext({
+      const mode = chatModeRef.current;
+      const ragResult = mode === 'source' ? undefined : buildVectorRAGContext({
         query: text.trim(),
         userBooks,
         readingSessions,
@@ -470,15 +481,16 @@ export const ChatView: React.FC = () => {
         dailyTargetPages: userProfile.dailyTargetPages
       });
 
-      // Update source highlights for UI indicator only if genuine query matches were retrieved
-      const activeSources = [
+      const activeSources = ragResult ? [
         ...ragResult.retrievedBooks.slice(0, 2),
         ...ragResult.retrievedQuotes.slice(0, 2),
-        ...ragResult.retrievedCurriculum.slice(0, 2)
-      ];
-      setLastRagSources(activeSources);
+        ...ragResult.retrievedReviews.slice(0, 1),
+        ...ragResult.retrievedCurriculum.slice(0, 2),
+        ...ragResult.retrievedPoetry.slice(0, 1),
+        ...ragResult.retrievedVocab.slice(0, 1),
+      ].slice(0, 6) : [];
 
-      const history = messages.map(m => ({
+      const history = mode === 'source' ? undefined : messages.slice(-12).map(m => ({
         role: m.role,
         parts: [{ text: m.text }]
       }));
@@ -488,20 +500,19 @@ export const ChatView: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text.trim(),
+          mode,
           history,
-          densePromptContext: ragResult.densePromptContext,
-          userSummary: ragResult.summary
+          densePromptContext: ragResult?.densePromptContext,
+          userSummary: ragResult?.summary,
         })
       });
 
       const contentType = res.headers.get("content-type") || "";
       if (!contentType.includes("application/json")) {
-        const textResponse = await res.text();
-        console.error("Non-JSON response received:", textResponse);
         throw new Error("Sunucu geçerli bir JSON yanıtı döndürmedi.");
       }
 
-      const data = await res.json();
+      const data: RobiChatReply & { error?: string } = await res.json();
       if (!res.ok) {
         throw new Error(data.error || "Yapay zeka sunucusu hata döndürdü.");
       }
@@ -512,7 +523,10 @@ export const ChatView: React.FC = () => {
       const modelMsg: Message = { 
         role: 'model', 
         text: replyText,
-        ragSummary: activeSources.length > 0 ? activeSources : undefined
+        ragSummary: !data.isFallback && activeSources.length > 0 ? activeSources : undefined,
+        model: data.model,
+        isFallback: data.isFallback,
+        sourceUrls: data.sourceUrls,
       };
       
       setMessages(prev => [...prev, modelMsg]);
@@ -526,7 +540,7 @@ export const ChatView: React.FC = () => {
 
     } catch (err: any) {
       console.error("Chat error:", err);
-      const errorMsg = `🐿️ Üzgünüm dostum, fındık ambarımda bir hata oluştu: ${err.message || 'Bilinmeyen hata'}. Lütfen tekrar dener misin?`;
+      const errorMsg = err.message || 'Yanıt alınamadı. Yeniden deneyebilirsin.';
       setMessages(prev => [...prev, { role: 'model', text: errorMsg }]);
       if (voiceChatModeRef.current) {
         speakMessage(errorMsg);
@@ -538,7 +552,7 @@ export const ChatView: React.FC = () => {
 
   const quickPrompts = [
     "🐿️ 12 Ana kategoriye ve kütüphaneme göre bana derin bir okuma haritası sun.",
-    "🌐 Project Gutenberg ve yabancı arşivlerden Gazali ve Kant karşılaştırması bul ve çevir.",
+    "Gazâlî ve Kant’ın aklın sınırlarına yaklaşımını, temel ayrımları ve okunabilecek birincil eserleriyle karşılaştır.",
     "📚 40 Yıllık okuma planımdaki ilk yıl klasiklerinden birini detaylandır.",
     "🖋️ Antolojimizdeki şiirlerden ve alıntılarımdan bana bir tefekkür mısrası seç."
   ];
@@ -613,7 +627,7 @@ export const ChatView: React.FC = () => {
               className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-medium text-amber-200 border border-white/10 flex items-center gap-1.5 transition-all"
             >
               <Database className="w-3.5 h-3.5 text-amber-300" />
-              <span>12 Kategori & RAG</span>
+              <span>Okur arşivi</span>
             </button>
 
             {/* Konuşuyorsa Sustur Butonu */}
@@ -822,10 +836,10 @@ export const ChatView: React.FC = () => {
           <div className="mt-4 pt-3 border-t border-white/10 text-xs text-amber-100 space-y-1.5 animate-in fade-in duration-200">
             <div className="flex items-center gap-2 font-semibold">
               <Search className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Tüm Veritabanı ve 12 Kategoriye Hakim İlim Katmanı:</span>
+              <span>Soruyla ilgili okur arşivi kayıtları</span>
             </div>
             <p className="text-white/70 leading-relaxed">
-              Kütüphanenizdeki 12 ana kategori, {userBooks.length} eser (okunan, tamamlanan, okunacak), {quotations.length} alıntı, 1920 kitaplık 40 yıllık ilim müfredatı ve 256 şiir arşivinin tamamı Robi’nin zihin ambarındadır. Mikrofonunuza dokunarak Türkçe sesle soru sorabilir ve sesli cevap alabilirsiniz.
+              Robi, {userBooks.length} eser ve {quotations.length} alıntı içeren arşivinden ilgili kayıtları bulabilir. İncelemelerin, sözlüğün, şiir koleksiyonu ve okuma müfredatı da eşleştirmeye katılır.
             </p>
           </div>
         )}
@@ -854,8 +868,10 @@ export const ChatView: React.FC = () => {
               {/* Message Header with Read Aloud Button for Robi */}
               {msg.role === 'model' && (
                 <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-black/5 dark:border-white/5">
-                  <span className="text-[11px] font-sans font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                  <span className="text-[11px] font-sans font-semibold text-amber-700 dark:text-amber-400 flex flex-wrap items-center gap-1">
                     <span>Robi Bilge Sincap</span>
+                    {msg.isFallback && <span className="text-slate-500 dark:text-slate-400">Sınırlı yanıt</span>}
+                    {msg.model && <span className="text-slate-500 dark:text-slate-400">{msg.model}</span>}
                     {activeSpeakingIdx === idx && isSpeaking && (
                       <span className="flex items-center gap-0.5 text-emerald-600 animate-pulse text-[10px]">
                         <Radio className="w-3 h-3 animate-spin" />
@@ -883,15 +899,24 @@ export const ChatView: React.FC = () => {
                 </div>
               )}
 
-              <div className="whitespace-pre-line">
+              <div className="whitespace-pre-line break-words">
                 {msg.text}
               </div>
+
+              {msg.sourceUrls && msg.sourceUrls.length > 0 && (
+                <div className="mt-3 space-y-1 border-t border-black/10 pt-2 font-sans text-[11px] dark:border-white/10">
+                  <p className="font-semibold">Erişilebilen kaynaklar</p>
+                  {msg.sourceUrls.map(url => (
+                    <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="block break-all underline">{url}</a>
+                  ))}
+                </div>
+              )}
 
               {msg.ragSummary && msg.ragSummary.length > 0 && (
                 <div className="mt-3 pt-2 border-t border-black/10 dark:border-white/10 text-[11px] text-amber-700 dark:text-amber-400/90 space-y-1">
                   <div className="flex items-center gap-1 font-sans font-semibold">
                     <Library className="w-3 h-3 text-amber-600" />
-                    <span>Çapraz Kütüphane & Müfredat İrtibatı:</span>
+                    <span>Soruyla eşleşen arşiv kayıtları</span>
                   </div>
                   {msg.ragSummary.map((src, sIdx) => (
                     <div key={sIdx} className="line-clamp-1 font-sans opacity-90">{src}</div>
@@ -909,7 +934,7 @@ export const ChatView: React.FC = () => {
             </div>
             <div className="p-3.5 rounded-2xl bg-[#F8F5EF] dark:bg-[#141414] text-xs text-slate-500 italic flex items-center gap-2">
               <span className="animate-spin">🌰</span>
-              <span>Robi 12 kategoriyi, kütüphaneni, 40 yıllık planı ve şiirleri tarıyor...</span>
+              <span>{chatMode === 'source' ? 'Bağlantı inceleniyor…' : 'Robi yanıtı hazırlıyor…'}</span>
             </div>
           </div>
         )}
@@ -917,8 +942,27 @@ export const ChatView: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
+      <div className="space-y-2 rounded-2xl border border-black/10 bg-white p-3 text-xs dark:border-white/10 dark:bg-[#1E1E1E]">
+        <label className="flex flex-wrap items-center gap-2 font-semibold">
+          Yanıt biçimi
+          <select
+            value={chatMode}
+            onChange={event => {
+              const mode = event.target.value as RobiChatMode;
+              chatModeRef.current = mode;
+              setChatMode(mode);
+            }}
+            disabled={isLoading}
+            className="rounded-lg border border-black/10 bg-[#F8F5EF] px-2 py-1.5 dark:border-white/10 dark:bg-[#141414]"
+          >
+            {Object.entries(CHAT_MODES).map(([mode, option]) => <option key={mode} value={mode}>{option.label}</option>)}
+          </select>
+        </label>
+        <p className="text-slate-600 dark:text-slate-300">{CHAT_MODES[chatMode].description}</p>
+      </div>
+
       {/* Quick Prompts */}
-      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
+      {chatMode !== 'source' && <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
         {quickPrompts.map((prompt, idx) => (
           <button
             key={idx}
@@ -928,7 +972,7 @@ export const ChatView: React.FC = () => {
             {prompt}
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* Input Form with Web Speech Microphone & Voice Action */}
       <form 
@@ -958,12 +1002,20 @@ export const ChatView: React.FC = () => {
           )}
         </button>
 
-        <input 
-          type="text"
-          placeholder={isListening ? "Sizi dinliyorum, konuşabilirsiniz... (Bitince otomatik gönderilir)" : "Robi'ye felsefe, 12 kategori, şiir veya okuma planın hakkında sor..."}
+        <textarea
+          rows={1}
+          aria-label="Robi'ye mesaj"
+          placeholder={isListening ? 'Seni dinliyorum…' : chatMode === 'source' ? 'Herkese açık bağlantıyı ve sorunu yaz…' : 'Sorunu veya incelemek istediğin pasajı yaz…'}
           value={inputMessage}
+          maxLength={12000}
           onChange={e => setInputMessage(e.target.value)}
-          className={`flex-1 px-3 py-2 text-xs md:text-sm bg-transparent focus:outline-none transition-colors ${
+          onKeyDown={event => {
+            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
+          className={`min-w-0 flex-1 max-h-32 resize-y px-3 py-2 text-xs md:text-sm bg-transparent focus:outline-none transition-colors ${
             isListening ? 'text-rose-700 dark:text-rose-300 font-medium italic' : 'text-slate-800 dark:text-slate-100'
           }`}
         />

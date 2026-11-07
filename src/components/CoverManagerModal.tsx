@@ -44,9 +44,9 @@ export const CoverManagerModal: React.FC<CoverManagerModalProps> = ({ isOpen, on
     const isEmbedded = b.coverSource === 'embedded' || (b.coverUrl && b.coverUrl.startsWith('data:'));
     const isExternal = b.coverSource === 'google_books' || b.coverSource === 'open_library' || b.coverSource === 'user';
 
-    if (activeFilter === 'missing') return isMissing;
-    if (activeFilter === 'embedded') return isEmbedded;
-    if (activeFilter === 'external') return isExternal;
+    if (activeFilter === 'missing' && !isMissing) return false;
+    if (activeFilter === 'embedded' && !isEmbedded) return false;
+    if (activeFilter === 'external' && !isExternal) return false;
     
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
@@ -119,7 +119,7 @@ export const CoverManagerModal: React.FC<CoverManagerModalProps> = ({ isOpen, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+    <div role="dialog" aria-modal="true" aria-label="Kapak yönetimi" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
       <div className="bg-[#F8F5EF] dark:bg-[#1E1E1E] w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl border border-[#B79A63]/30 flex flex-col overflow-hidden">
         
         {/* Modal Header */}
@@ -143,6 +143,7 @@ export const CoverManagerModal: React.FC<CoverManagerModalProps> = ({ isOpen, on
 
           <button 
             onClick={onClose}
+            aria-label="Kapak yönetimini kapat"
             className="p-2 rounded-full hover:bg-white/10 transition-colors text-white/80 hover:text-white"
           >
             <X className="w-6 h-6" />
